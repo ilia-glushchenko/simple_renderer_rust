@@ -23,8 +23,11 @@ fn update_input(window: &mut window::Window) {
 }
 
 fn load_models() -> models::DeviceModel {
-    //let model = models::load_models(Path::new("data/box/box.obj"));
-    buffer::create_device_model(&models::create_host_triangle_model())
+    buffer::create_device_model(
+        models::load_host_model_from_obj(Path::new("data/bunny/bunny.obj"))
+            .last()
+            .unwrap(),
+    )
 }
 
 fn main_loop(window: &mut window::Window) {

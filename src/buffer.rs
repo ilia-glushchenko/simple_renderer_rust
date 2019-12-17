@@ -19,25 +19,50 @@ pub fn create_device_model(model: &models::HostModel) -> models::DeviceModel {
         vao,
         index_count: model.indices.len() as i32 / 3,
         attributes: model.attributes.clone(),
-        vbos: vec![
-            create_buffer(&create_buffer_descriptor(&model.vertices, gl::ARRAY_BUFFER))
-                .expect("Failed to create vertex buffer."),
-            create_buffer(&create_buffer_descriptor(&model.normals, gl::ARRAY_BUFFER))
-                .expect("Failed to create normal buffer."),
-            create_buffer(&create_buffer_descriptor(&model.uvs, gl::ARRAY_BUFFER))
-                .expect("Failed to create uv buffer."),
-            create_buffer(&create_buffer_descriptor(
-                &model.materials,
-                gl::ARRAY_BUFFER,
-            ))
-            .expect("Failed to create material buffer."),
-        ],
+        vbos: create_device_model_vbos(model),
         indices: create_buffer(&create_buffer_descriptor(
             &model.indices,
             gl::ELEMENT_ARRAY_BUFFER,
         ))
         .expect("Failed to create index buffer."),
     }
+}
+
+fn create_device_model_vbos(model: &models::HostModel) -> Vec<u32> {
+    let mut vbos: Vec<u32> = Vec::new();
+
+    if !model.vertices.is_empty() {
+        vbos.push(
+            create_buffer(&create_buffer_descriptor(&model.vertices, gl::ARRAY_BUFFER))
+                .expect("Failed to create vertex buffer."),
+        );
+    }
+
+    if !model.normals.is_empty() {
+        vbos.push(
+            create_buffer(&create_buffer_descriptor(&model.normals, gl::ARRAY_BUFFER))
+                .expect("Failed to create normal buffer."),
+        );
+    }
+
+    if !model.uvs.is_empty() {
+        vbos.push(
+            create_buffer(&create_buffer_descriptor(&model.uvs, gl::ARRAY_BUFFER))
+                .expect("Failed to create uv buffer."),
+        );
+    }
+
+    if !model.materials.is_empty() {
+        vbos.push(
+            create_buffer(&create_buffer_descriptor(
+                &model.materials,
+                gl::ARRAY_BUFFER,
+            ))
+            .expect("Failed to create material buffer."),
+        );
+    }
+
+    vbos
 }
 
 struct BufferDescriptor {

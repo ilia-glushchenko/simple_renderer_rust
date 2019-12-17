@@ -16,6 +16,6 @@ pub fn execute_render_pass(
 
         gl::BindVertexArray(model.vao);
         gl::UseProgram(program.handle);
-        gl::DrawElements(gl::TRIANGLES, 3, gl::UNSIGNED_INT, null());
+        gl::DrawElements(gl::TRIANGLES, model.index_count, gl::UNSIGNED_INT, null());
     }
 }

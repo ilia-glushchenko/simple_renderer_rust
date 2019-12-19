@@ -97,6 +97,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "impl_ops"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
 name = "khronos_api"
 version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -164,6 +169,7 @@ dependencies = [
  "gl 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "gl_loader 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "glfw 0.34.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "impl_ops 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "stb_image 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "tobj 0.1.11 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -220,6 +226,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum gl_loader 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "e32d96dd5f881490e537041d5532320812ba096097f07fccb4626578da0b99d3"
 "checksum glfw 0.34.0 (registry+https://github.com/rust-lang/crates.io-index)" = "4270c54da6c6035d29daf646ede04d2f10e95ad082a0e5f9f6031f6559a86dcc"
 "checksum glfw-sys 3.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "f18d2cf180dd18d06142b26758d32aeb6c71ba0a37c7f3ddafee22b8a3247cd3"
+"checksum impl_ops 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "90f97a5f38dd3ccfbe7aa80f4a0c00930f21b922c74195be0201c51028f22dcf"
 "checksum khronos_api 3.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 "checksum lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 "checksum libc 0.2.66 (registry+https://github.com/rust-lang/crates.io-index)" = "d515b1f41455adea1313a4a2ac8a8a477634fbae63cc6100e3aebb207ce61558"

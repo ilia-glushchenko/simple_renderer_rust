@@ -30,11 +30,32 @@ pub struct DeviceModel {
 }
 
 #[derive(Clone)]
+pub struct Models {
+    pub device_models: Vec<DeviceModel>,
+    pub transforms: Vec<math::Mat4x4f>,
+}
+
+#[derive(Clone)]
 pub struct ModelAttribute {
     pub name: String,
     pub dimensions: i32,
     pub stride: i32,
     pub data_type: u32,
+}
+
+pub fn create_models_container(
+    device_models: Vec<DeviceModel>,
+    transforms: Vec<math::Mat4x4f>,
+) -> Models {
+    assert!(
+        device_models.len() == transforms.len(),
+        "All Models containers have to be of the same length."
+    );
+
+    Models {
+        device_models,
+        transforms,
+    }
 }
 
 pub fn load_host_model_from_obj(file_path: &Path) -> Vec<HostModel> {

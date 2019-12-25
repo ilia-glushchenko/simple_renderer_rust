@@ -56,6 +56,7 @@ pub type Vec4u = Vec4<u32>;
 pub type Vec4i = Vec4<i16>;
 
 #[allow(dead_code)]
+#[derive(Copy, Clone)]
 pub struct Mat3x3<T> {
     pub r1: Vec3<T>,
     pub r2: Vec3<T>,
@@ -69,6 +70,7 @@ pub type Mat3x3u = Mat3x3<u32>;
 pub type Mat3x3i = Mat3x3<i16>;
 
 #[allow(dead_code)]
+#[derive(Copy, Clone)]
 pub struct Mat4x4<T> {
     pub r1: Vec4<T>,
     pub r2: Vec4<T>,
@@ -255,7 +257,7 @@ where
 }
 
 #[allow(dead_code)]
-fn null_vec1<T>() -> Vec1<T>
+pub fn null_vec1<T>() -> Vec1<T>
 where
     T: From<i16>,
 {
@@ -263,7 +265,7 @@ where
 }
 
 #[allow(dead_code)]
-fn null_vec2<T>() -> Vec2<T>
+pub fn null_vec2<T>() -> Vec2<T>
 where
     T: From<i16>,
 {
@@ -274,7 +276,7 @@ where
 }
 
 #[allow(dead_code)]
-fn null_vec3<T>() -> Vec3<T>
+pub fn null_vec3<T>() -> Vec3<T>
 where
     T: From<i16>,
 {
@@ -286,7 +288,7 @@ where
 }
 
 #[allow(dead_code)]
-fn null_vec4<T>() -> Vec4<T>
+pub fn null_vec4<T>() -> Vec4<T>
 where
     T: From<i16>,
 {
@@ -299,7 +301,7 @@ where
 }
 
 #[allow(dead_code)]
-fn dot_vec1<T>(a: Vec1<T>, b: Vec1<T>) -> T
+pub fn dot_vec1<T>(a: Vec1<T>, b: Vec1<T>) -> T
 where
     T: Mul<Output = T> + Copy,
 {
@@ -307,7 +309,7 @@ where
 }
 
 #[allow(dead_code)]
-fn dot_vec2<T>(a: Vec2<T>, b: Vec2<T>) -> T
+pub fn dot_vec2<T>(a: Vec2<T>, b: Vec2<T>) -> T
 where
     T: Mul<Output = T> + Add<Output = T> + Copy,
 {
@@ -315,7 +317,7 @@ where
 }
 
 #[allow(dead_code)]
-fn dot_vec3<T>(a: Vec3<T>, b: Vec3<T>) -> T
+pub fn dot_vec3<T>(a: Vec3<T>, b: Vec3<T>) -> T
 where
     T: Mul<Output = T> + Add<Output = T> + Copy,
 {
@@ -323,7 +325,7 @@ where
 }
 
 #[allow(dead_code)]
-fn dot_vec4<T>(a: Vec4<T>, b: Vec4<T>) -> T
+pub fn dot_vec4<T>(a: Vec4<T>, b: Vec4<T>) -> T
 where
     T: Mul<Output = T> + Add<Output = T> + Copy,
 {
@@ -331,7 +333,7 @@ where
 }
 
 #[allow(dead_code)]
-fn cross<T>(a: Vec3<T>, b: Vec3<T>) -> Vec3<T>
+pub fn cross<T>(a: Vec3<T>, b: Vec3<T>) -> Vec3<T>
 where
     T: Mul<Output = T> + Sub<Output = T> + Copy,
 {
@@ -343,62 +345,62 @@ where
 }
 
 #[allow(dead_code)]
-fn length_squared_vec1(a: Vec1f) -> f32 {
+pub fn length_squared_vec1(a: Vec1f) -> f32 {
     dot_vec1(a, a)
 }
 
 #[allow(dead_code)]
-fn length_squared_vec2(a: Vec2f) -> f32 {
+pub fn length_squared_vec2(a: Vec2f) -> f32 {
     dot_vec2(a, a)
 }
 
 #[allow(dead_code)]
-fn length_squared_vec3(a: Vec3f) -> f32 {
+pub fn length_squared_vec3(a: Vec3f) -> f32 {
     dot_vec3(a, a)
 }
 
 #[allow(dead_code)]
-fn length_squared_vec4(a: Vec4f) -> f32 {
+pub fn length_squared_vec4(a: Vec4f) -> f32 {
     dot_vec4(a, a)
 }
 
 #[allow(dead_code)]
-fn length_vec1(a: Vec1f) -> f32 {
+pub fn length_vec1(a: Vec1f) -> f32 {
     length_squared_vec1(a).sqrt()
 }
 
 #[allow(dead_code)]
-fn length_vec2(a: Vec2f) -> f32 {
+pub fn length_vec2(a: Vec2f) -> f32 {
     length_squared_vec2(a).sqrt()
 }
 
 #[allow(dead_code)]
-fn length_vec3(a: Vec3f) -> f32 {
+pub fn length_vec3(a: Vec3f) -> f32 {
     length_squared_vec3(a).sqrt()
 }
 
 #[allow(dead_code)]
-fn length_vec4(a: Vec4f) -> f32 {
+pub fn length_vec4(a: Vec4f) -> f32 {
     length_squared_vec4(a).sqrt()
 }
 
 #[allow(dead_code)]
-fn normalize_vec1(a: Vec1f) -> Vec1f {
+pub fn normalize_vec1(a: Vec1f) -> Vec1f {
     a / length_vec1(a)
 }
 
 #[allow(dead_code)]
-fn normalize_vec2(a: Vec2f) -> Vec2f {
+pub fn normalize_vec2(a: Vec2f) -> Vec2f {
     a / length_vec2(a)
 }
 
 #[allow(dead_code)]
-fn normalize_vec3(a: Vec3f) -> Vec3f {
+pub fn normalize_vec3(a: Vec3f) -> Vec3f {
     a / length_vec3(a)
 }
 
 #[allow(dead_code)]
-fn normalize_vec4(a: Vec4f) -> Vec4f {
+pub fn normalize_vec4(a: Vec4f) -> Vec4f {
     a / length_vec4(a)
 }
 
@@ -810,7 +812,7 @@ where
 }
 
 #[allow(dead_code)]
-fn null_mat3x3<T>() -> Mat3x3<T>
+pub fn null_mat3x3<T>() -> Mat3x3<T>
 where
     T: From<i16>,
 {
@@ -834,7 +836,7 @@ where
 }
 
 #[allow(dead_code)]
-fn null_mat4x4<T>() -> Mat4x4<T>
+pub fn null_mat4x4<T>() -> Mat4x4<T>
 where
     T: From<i16>,
 {
@@ -867,7 +869,7 @@ where
 }
 
 #[allow(dead_code)]
-fn identity_mat3x3<T>() -> Mat3x3<T>
+pub fn identity_mat3x3<T>() -> Mat3x3<T>
 where
     T: From<i16>,
 {
@@ -891,7 +893,7 @@ where
 }
 
 #[allow(dead_code)]
-fn identity_mat4x4<T>() -> Mat4x4<T>
+pub fn identity_mat4x4<T>() -> Mat4x4<T>
 where
     T: From<i16>,
 {
@@ -924,7 +926,7 @@ where
 }
 
 #[allow(dead_code)]
-fn x_rotation_mat3x3(angle: f32) -> Mat3x3f {
+pub fn x_rotation_mat3x3(angle: f32) -> Mat3x3f {
     Mat3x3f {
         r1: Vec3f {
             x: 1.,
@@ -945,7 +947,7 @@ fn x_rotation_mat3x3(angle: f32) -> Mat3x3f {
 }
 
 #[allow(dead_code)]
-fn y_rotation_mat3x3(angle: f32) -> Mat3x3f {
+pub fn y_rotation_mat3x3(angle: f32) -> Mat3x3f {
     Mat3x3f {
         r1: Vec3f {
             x: angle.cos(),
@@ -966,7 +968,7 @@ fn y_rotation_mat3x3(angle: f32) -> Mat3x3f {
 }
 
 #[allow(dead_code)]
-fn z_rotation_mat3x3(angle: f32) -> Mat3x3f {
+pub fn z_rotation_mat3x3(angle: f32) -> Mat3x3f {
     Mat3x3f {
         r1: Vec3f {
             x: angle.cos(),
@@ -987,22 +989,22 @@ fn z_rotation_mat3x3(angle: f32) -> Mat3x3f {
 }
 
 #[allow(dead_code)]
-fn x_rotation_mat4x4(angle: f32) -> Mat4x4f {
+pub fn x_rotation_mat4x4(angle: f32) -> Mat4x4f {
     Mat4x4f::from(x_rotation_mat3x3(angle))
 }
 
 #[allow(dead_code)]
-fn y_rotation_mat4x4(angle: f32) -> Mat4x4f {
+pub fn y_rotation_mat4x4(angle: f32) -> Mat4x4f {
     Mat4x4f::from(y_rotation_mat3x3(angle))
 }
 
 #[allow(dead_code)]
-fn z_rotation_mat4x4(angle: f32) -> Mat4x4f {
+pub fn z_rotation_mat4x4(angle: f32) -> Mat4x4f {
     Mat4x4f::from(z_rotation_mat3x3(angle))
 }
 
 #[allow(dead_code)]
-fn scale_mat3x3(scale: Vec3f) -> Mat3x3f {
+pub fn scale_mat3x3(scale: Vec3f) -> Mat3x3f {
     let mut mat = identity_mat3x3();
 
     mat.r1.x = scale.x;
@@ -1013,12 +1015,12 @@ fn scale_mat3x3(scale: Vec3f) -> Mat3x3f {
 }
 
 #[allow(dead_code)]
-fn scale_mat4x4(scale: Vec3f) -> Mat4x4f {
+pub fn scale_mat4x4(scale: Vec3f) -> Mat4x4f {
     Mat4x4f::from(scale_mat3x3(scale))
 }
 
 #[allow(dead_code)]
-fn tranlation_mat4x4(offset: Vec3f) -> Mat4x4f {
+pub fn tranlation_mat4x4(offset: Vec3f) -> Mat4x4f {
     let mut mat = identity_mat4x4();
     mat.r1.w = offset.x;
     mat.r2.w = offset.y;
@@ -1027,7 +1029,7 @@ fn tranlation_mat4x4(offset: Vec3f) -> Mat4x4f {
 }
 
 #[allow(dead_code)]
-fn orthographics_projection_planes_mat4x4(
+pub fn orthographics_projection_planes_mat4x4(
     left: f32,
     right: f32,
     bottom: f32,
@@ -1048,7 +1050,7 @@ fn orthographics_projection_planes_mat4x4(
 }
 
 #[allow(dead_code)]
-fn perspective_projection_planes_mat4x4(
+pub fn perspective_projection_planes_mat4x4(
     left: f32,
     right: f32,
     bottom: f32,
@@ -1070,7 +1072,7 @@ fn perspective_projection_planes_mat4x4(
 }
 
 #[allow(dead_code)]
-fn perspective_projection_mat4x4(vfow: f32, aspect: f32, near: f32, far: f32) -> Mat4x4f {
+pub fn perspective_projection_mat4x4(vfow: f32, aspect: f32, near: f32, far: f32) -> Mat4x4f {
     let c = 1_f32 / (vfow / 2_f32).tan();
 
     let mut proj = null_mat4x4::<f32>();

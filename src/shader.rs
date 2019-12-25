@@ -1,6 +1,6 @@
 extern crate colored;
 use crate::models;
-use colored::*;
+use colored::Colorize;
 use gl;
 use std::ffi::CString;
 use std::fs;
@@ -15,11 +15,24 @@ pub struct ShaderProgramAttribute {
     pub name: String,
 }
 
+pub struct ShaderProgramScalarUniform {
+    pub location: u32,
+    pub name: String,
+}
+
+pub struct ShaderProgramArrayUniform {
+    pub location: u32,
+    pub count: u32,
+    pub name: String,
+}
+
 pub struct ShaderProgram {
     pub handle: u32,
     pub vert_shader_handle: u32,
     pub frag_shader_handle: u32,
     pub attributes: Vec<ShaderProgramAttribute>,
+    pub scalar_uniforms: Vec<ShaderProgramScalarUniform>,
+    pub array_uniforms: Vec<ShaderProgramArrayUniform>,
 }
 
 pub fn create_shader_program(
@@ -41,11 +54,11 @@ pub fn create_shader_program(
         fs::read_to_string(vert_shader_file_path).expect("Failed to load shader code.");
     let vert_shader_handle =
         create_shader(&vert_shader_source, gl::VERTEX_SHADER).expect("Failed to create shader.");
-    let frag_shader_handle = create_shader(
-        &fs::read_to_string(frag_shader_file_path).expect("Failed to load shader code."),
-        gl::FRAGMENT_SHADER,
-    )
-    .expect("Failed to create shader.");
+
+    let frag_shader_source =
+        fs::read_to_string(frag_shader_file_path).expect("Failed to load shader code.");
+    let frag_shader_handle =
+        create_shader(&frag_shader_source, gl::FRAGMENT_SHADER).expect("Failed to create shader.");
 
     link_shader_program(handle, vert_shader_handle, frag_shader_handle)
         .expect("Failed to link shader program.");
@@ -58,6 +71,22 @@ pub fn create_shader_program(
             handle,
             &vert_shader_source,
             vert_shader_file_path.file_name().unwrap().to_str().unwrap(),
+        ),
+        scalar_uniforms: create_shader_program_scalar_uniforms(
+            handle,
+            vec![&vert_shader_source, &frag_shader_source],
+            vec![
+                vert_shader_file_path.file_name().unwrap().to_str().unwrap(),
+                frag_shader_file_path.file_name().unwrap().to_str().unwrap(),
+            ],
+        ),
+        array_uniforms: create_shader_program_array_uniforms(
+            handle,
+            vec![&vert_shader_source, &frag_shader_source],
+            vec![
+                vert_shader_file_path.file_name().unwrap().to_str().unwrap(),
+                frag_shader_file_path.file_name().unwrap().to_str().unwrap(),
+            ],
         ),
     }
 }
@@ -195,8 +224,91 @@ fn create_shader_program_attributes(
 ) -> Vec<ShaderProgramAttribute> {
     let mut attribs: Vec<ShaderProgramAttribute> = Vec::new();
 
-    for n in 0..10 {
-        let layout_location = format!("layout (location = {}) in ", n).to_string();
+    for attribute_name in find_shader_program_inputs(file, ShaderProgramVariableType::IN, 0, 10) {
+        let c_attribute_name =
+            CString::new(attribute_name.clone()).expect("Failed to create CString.");
+        let location = unsafe { gl::GetAttribLocation(program, c_attribute_name.as_ptr()) };
+        if location != -1 {
+            attribs.push(ShaderProgramAttribute {
+                location: location as u32,
+                name: attribute_name.to_string(),
+            })
+        } else {
+            let message = format!(
+                "Failed to get '{}' attribute location in shader '{}'",
+                attribute_name, filename
+            )
+            .to_string();
+            println!("{}", message.yellow());
+        }
+    }
+
+    attribs
+}
+
+fn create_shader_program_scalar_uniforms(
+    program: u32,
+    files: Vec<&str>,
+    filenames: Vec<&str>,
+) -> Vec<ShaderProgramScalarUniform> {
+    assert!(files.len() == filenames.len());
+
+    let mut shader_program_scalar_uniform: Vec<ShaderProgramScalarUniform> = Vec::new();
+    let mut i = 0;
+    while i < files.len() {
+        for uniform_name in
+            find_shader_program_inputs(files[i], ShaderProgramVariableType::UNIFORM, 10, 50)
+        {
+            let c_uniform_name =
+                CString::new(uniform_name.clone()).expect("Failed to create CString.");
+            let location = unsafe { gl::GetUniformLocation(program, c_uniform_name.as_ptr()) };
+            if location != -1 {
+                shader_program_scalar_uniform.push(ShaderProgramScalarUniform {
+                    location: location as u32,
+                    name: uniform_name,
+                })
+            } else {
+                let message = format!(
+                    "Failed to get '{}' uniform location in shader '{}'",
+                    uniform_name, filenames[i]
+                )
+                .to_string();
+                println!("{}", message.yellow());
+            }
+        }
+
+        i += 1;
+    }
+
+    shader_program_scalar_uniform
+}
+
+fn create_shader_program_array_uniforms(
+    _program: u32,
+    _files: Vec<&str>,
+    _filenames: Vec<&str>,
+) -> Vec<ShaderProgramArrayUniform> {
+    Vec::new()
+}
+
+enum ShaderProgramVariableType {
+    IN,
+    UNIFORM,
+}
+
+fn find_shader_program_inputs(
+    file: &str,
+    input_type: ShaderProgramVariableType,
+    location_min: u32,
+    location_max: u32,
+) -> Vec<String> {
+    let mut inputs: Vec<String> = Vec::new();
+
+    for n in location_min..location_max {
+        let layout_location = match input_type {
+            ShaderProgramVariableType::IN => format!("layout (location = {}) in ", n),
+            ShaderProgramVariableType::UNIFORM => format!("layout (location = {}) uniform ", n),
+        };
         let index = file.rfind(&layout_location);
 
         if let Some(index) = index {
@@ -205,25 +317,10 @@ fn create_shader_program_attributes(
             let attribute_name = file[index..last_index].split_whitespace().last();
 
             if let Some(attribute_name) = attribute_name {
-                let c_attribute_name =
-                    CString::new(attribute_name).expect("Failed to create CString.");
-                let location = unsafe { gl::GetAttribLocation(program, c_attribute_name.as_ptr()) };
-                if location != -1 {
-                    attribs.push(ShaderProgramAttribute {
-                        location: location as u32,
-                        name: attribute_name.to_string(),
-                    })
-                } else {
-                    let message = format!(
-                        "Failed to get '{}' attribute location in shader '{}'",
-                        attribute_name, filename
-                    )
-                    .to_string();
-                    println!("{}", message.yellow());
-                }
+                inputs.push(attribute_name.to_string());
             }
         }
     }
 
-    attribs
+    inputs
 }

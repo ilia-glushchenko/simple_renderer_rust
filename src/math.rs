@@ -1015,8 +1015,22 @@ pub fn scale_mat3x3(scale: Vec3f) -> Mat3x3f {
 }
 
 #[allow(dead_code)]
+pub fn scale_uniform_mat3x3(scale: f32) -> Mat3x3f {
+    scale_mat3x3(Vec3f {
+        x: scale,
+        y: scale,
+        z: scale,
+    })
+}
+
+#[allow(dead_code)]
 pub fn scale_mat4x4(scale: Vec3f) -> Mat4x4f {
     Mat4x4f::from(scale_mat3x3(scale))
+}
+
+#[allow(dead_code)]
+pub fn scale_uniform_mat4x4(scale: f32) -> Mat4x4f {
+    Mat4x4::from(scale_uniform_mat3x3(scale))
 }
 
 #[allow(dead_code)]

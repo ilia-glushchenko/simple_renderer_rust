@@ -48,20 +48,17 @@ fn load_models() -> models::Models {
     models::create_models_container(device_models, transforms)
 }
 
-fn create_mvp_techinique() -> technique::Technique {
+fn create_mvp_techinique(models: &models::Models) -> technique::Technique {
     technique::Technique {
-        per_frame_uniforms: technique::OwningUniforms {
+        per_frame_uniforms: technique::Uniforms {
             vec1f: Vec::new(),
             vec1u: Vec::new(),
             vec2f: Vec::new(),
             vec3f: Vec::new(),
             mat4x4f: vec![
-                technique::OwningUniform::<math::Mat4x4f> {
+                technique::Uniform::<math::Mat4x4f> {
                     name: "uProjMat4".to_string(),
-                    location: technique::UniformProgramLocation {
-                        location: 0,
-                        program: 0,
-                    },
+                    location: technique::DEFAULT_UNIFORM_PROGRAM_LOCATION,
                     data: vec![math::perspective_projection_mat4x4(
                         f32::consts::PI / 2.,
                         1.,
@@ -69,26 +66,31 @@ fn create_mvp_techinique() -> technique::Technique {
                         1000.,
                     )],
                 },
-                technique::OwningUniform::<math::Mat4x4f> {
+                technique::Uniform::<math::Mat4x4f> {
                     name: "uViewMat4".to_string(),
-                    location: technique::UniformProgramLocation {
-                        location: 0,
-                        program: 0,
-                    },
+                    location: technique::DEFAULT_UNIFORM_PROGRAM_LOCATION,
                     data: vec![math::tranlation_mat4x4(math::Vec3f {
                         x: 0.,
                         y: 0.,
-                        z: 10.,
+                        z: -1.,
                     })],
                 },
             ],
         },
-        per_model_uniforms: technique::NonOwningUniforms {
+        per_model_uniforms: technique::Uniforms {
             vec1f: Vec::new(),
             vec1u: Vec::new(),
             vec2f: Vec::new(),
             vec3f: Vec::new(),
-            mat4x4f: Vec::new(),
+            mat4x4f: models
+                .transforms
+                .iter()
+                .map(|&x| technique::Uniform::<math::Mat4x4f> {
+                    name: "uModelMat4".to_string(),
+                    location: technique::DEFAULT_UNIFORM_PROGRAM_LOCATION,
+                    data: vec![x * math::scale_uniform_mat4x4(5.)],
+                })
+                .collect(),
         },
     }
 }
@@ -98,8 +100,10 @@ fn main_loop(window: &mut window::Window) {
         keys: HashMap::new(),
     };
 
-    let device_model = load_models();
-    let mut mvp_technique = create_mvp_techinique();
+    let mut models = load_models();
+    let mut mvp_technique = create_mvp_techinique(&models);
+
+    models.transforms[0] = math::identity_mat4x4();
 
     let program = shader::create_shader_program(
         Path::new("shaders/pass_through.vert"),
@@ -108,10 +112,7 @@ fn main_loop(window: &mut window::Window) {
 
     technique::bind_shader_program_to_technique(&mut mvp_technique, &program);
 
-    shader::bind_device_model_to_shader_program(
-        device_model.device_models.first().unwrap(),
-        &program,
-    );
+    shader::bind_device_model_to_shader_program(models.device_models.first().unwrap(), &program);
 
     while !window.handle.should_close() {
         update_input(window, &mut input_data);
@@ -120,7 +121,7 @@ fn main_loop(window: &mut window::Window) {
             &window,
             &program,
             &mvp_technique,
-            device_model.device_models.first().unwrap(),
+            models.device_models.first().unwrap(),
         );
         window.handle.swap_buffers();
     }

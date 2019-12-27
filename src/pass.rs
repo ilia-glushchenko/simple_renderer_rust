@@ -20,9 +20,15 @@ pub fn execute_render_pass(
         gl::UseProgram(program.handle);
     }
 
-    technique::update_uniforms_bound_to_program(&technique, &program);
+    technique::update_per_frame_uniforms(&program, &technique.per_frame_uniforms);
+    technique::update_per_model_uniform(&program, &technique.per_model_uniforms, 0);
 
     unsafe {
-        gl::DrawElements(gl::TRIANGLES, model.index_count, gl::UNSIGNED_INT, null());
+        gl::DrawElements(
+            gl::TRIANGLES,
+            model.index_count * 3,
+            gl::UNSIGNED_INT,
+            null(),
+        );
     }
 }

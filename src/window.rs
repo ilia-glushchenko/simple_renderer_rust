@@ -2,6 +2,7 @@ extern crate colored;
 extern crate gl;
 extern crate gl_loader;
 extern crate glfw;
+extern crate stb_image;
 use colored::*;
 use glfw::Context;
 use std::ffi::c_void;
@@ -37,6 +38,11 @@ pub fn initialize_application() -> Window {
     gl::load_with(|symbol| gl_loader::get_proc_address(symbol) as *const _);
 
     initialize_gl_debug();
+
+    //Need to flip images because of the OpenGL coordinate system
+    unsafe {
+        stb_image::stb_image::bindgen::stbi_set_flip_vertically_on_load(1);
+    }
 
     Window {
         glfw,

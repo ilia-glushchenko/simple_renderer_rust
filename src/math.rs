@@ -3,6 +3,7 @@ extern crate impl_ops;
 use core::ops::Add;
 use core::ops::Div;
 use core::ops::Mul;
+use core::ops::Neg;
 use core::ops::Sub;
 
 #[derive(Copy, Clone)]
@@ -256,6 +257,118 @@ where
     }
 }
 
+impl<T> Mul<T> for Vec1<T>
+where
+    T: Mul<Output = T> + Copy,
+{
+    type Output = Self;
+
+    fn mul(self, other: T) -> Self::Output {
+        Self { x: self.x * other }
+    }
+}
+
+impl<T> Mul<T> for Vec2<T>
+where
+    T: Mul<Output = T> + Copy,
+{
+    type Output = Self;
+
+    fn mul(self, other: T) -> Self::Output {
+        Self {
+            x: self.x * other,
+            y: self.y * other,
+        }
+    }
+}
+
+impl<T> Mul<T> for Vec3<T>
+where
+    T: Mul<Output = T> + Copy,
+{
+    type Output = Self;
+
+    fn mul(self, other: T) -> Self::Output {
+        Self::Output {
+            x: self.x * other,
+            y: self.y * other,
+            z: self.z * other,
+        }
+    }
+}
+
+impl<T> Mul<T> for Vec4<T>
+where
+    T: Mul<Output = T> + Copy,
+{
+    type Output = Self;
+
+    fn mul(self, other: T) -> Self::Output {
+        Self {
+            x: self.x * other,
+            y: self.y * other,
+            z: self.z * other,
+            w: self.w * other,
+        }
+    }
+}
+
+impl<T> Neg for Vec1<T>
+where
+    T: Neg<Output = T> + Copy,
+{
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        Vec1::<T> { x: -self.x }
+    }
+}
+
+impl<T> Neg for Vec2<T>
+where
+    T: Neg<Output = T> + Copy,
+{
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        Vec2::<T> {
+            x: -self.x,
+            y: -self.y,
+        }
+    }
+}
+
+impl<T> Neg for Vec3<T>
+where
+    T: Neg<Output = T> + Copy,
+{
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        Vec3::<T> {
+            x: -self.x,
+            y: -self.y,
+            z: -self.z,
+        }
+    }
+}
+
+impl<T> Neg for Vec4<T>
+where
+    T: Neg<Output = T> + Copy,
+{
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        Vec4::<T> {
+            x: -self.x,
+            y: -self.y,
+            z: -self.z,
+            w: -self.w,
+        }
+    }
+}
+
 #[allow(dead_code)]
 pub fn null_vec1<T>() -> Vec1<T>
 where
@@ -402,6 +515,50 @@ pub fn normalize_vec3(a: Vec3f) -> Vec3f {
 #[allow(dead_code)]
 pub fn normalize_vec4(a: Vec4f) -> Vec4f {
     a / length_vec4(a)
+}
+
+#[allow(dead_code)]
+pub fn zero_vec1<T>() -> Vec1<T>
+where
+    T: From<i16>,
+{
+    Vec1::<T> { x: T::from(0) }
+}
+
+#[allow(dead_code)]
+pub fn zero_vec2<T>() -> Vec2<T>
+where
+    T: From<i16>,
+{
+    Vec2::<T> {
+        x: T::from(0),
+        y: T::from(0),
+    }
+}
+
+#[allow(dead_code)]
+pub fn zero_vec3<T>() -> Vec3<T>
+where
+    T: From<i16>,
+{
+    Vec3::<T> {
+        x: T::from(0),
+        y: T::from(0),
+        z: T::from(0),
+    }
+}
+
+#[allow(dead_code)]
+pub fn zero_vec4<T>() -> Vec4<T>
+where
+    T: From<i16>,
+{
+    Vec4::<T> {
+        x: T::from(0),
+        y: T::from(0),
+        z: T::from(0),
+        w: T::from(0),
+    }
 }
 
 pub trait VecDimensions<T> {
@@ -1097,4 +1254,14 @@ pub fn perspective_projection_mat4x4(vfow: f32, aspect: f32, near: f32, far: f32
     proj.r4.z = -1_f32;
 
     proj
+}
+
+#[allow(dead_code)]
+pub fn create_camera_mat4x4(pos: Vec3f, yaw: f32, pitch: f32) -> Mat4x4f {
+    tranlation_mat4x4(pos) * y_rotation_mat4x4(yaw) * x_rotation_mat4x4(pitch)
+}
+
+#[allow(dead_code)]
+pub fn create_view_mat4x4(pos: Vec3f, yaw: f32, pitch: f32) -> Mat4x4f {
+    x_rotation_mat4x4(-pitch) * y_rotation_mat4x4(-yaw) * tranlation_mat4x4(-pos)
 }

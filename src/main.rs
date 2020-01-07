@@ -9,6 +9,7 @@ use std::path::Path;
 
 mod buffer;
 mod input;
+mod material;
 mod math;
 mod models;
 mod pass;
@@ -16,39 +17,40 @@ mod shader;
 mod technique;
 mod window;
 
-fn update_input(window: &mut window::Window, input_data: &mut input::Data) {
-    input::update_input(window, input_data);
+struct Camera {
+    view: math::Mat4x4f,
+    pos: math::Vec3f,
+    pitch: f32,
+    yaw: f32,
+}
 
-    if let Some(input::Action::Repeat) = input_data.keys.get(&input::Key::W) {
-        println!("W");
-    }
-    if let Some(input::Action::Repeat) = input_data.keys.get(&input::Key::S) {
-        println!("S");
-    }
-    if let Some(input::Action::Repeat) = input_data.keys.get(&input::Key::A) {
-        println!("A");
-    }
-    if let Some(input::Action::Repeat) = input_data.keys.get(&input::Key::D) {
-        println!("D");
+fn update_cursor_mode(window: &mut window::Window, input_data: &mut input::Data) {
+    if let Some(input::Action::Press) = input_data.keys.get(&input::Key::F) {
+        let mode = window.handle.get_cursor_mode();
+        match mode {
+            glfw::CursorMode::Normal => {
+                window.handle.set_cursor_mode(glfw::CursorMode::Disabled);
+                input_data.mouse.pos = window.handle.get_cursor_pos();
+                input_data.mouse.prev_pos = input_data.mouse.pos;
+            }
+            glfw::CursorMode::Disabled => {
+                window.handle.set_cursor_mode(glfw::CursorMode::Normal);
+                input_data.mouse.pos = (0., 0.);
+                input_data.mouse.prev_pos = input_data.mouse.pos;
+            }
+            _ => panic!(),
+        };
     }
 }
 
-fn load_models() -> models::Models {
-    let device_models = vec![
-        buffer::create_device_model(
-            models::load_host_model_from_obj(Path::new("data/models/bunny/bunny.obj"))
-                .last()
-                .unwrap(),
-        );
-        1
-    ];
+fn load_device_model() -> models::DeviceModel {
+    let host_model = models::load_host_model_from_obj(Path::new("data/models/sponza/sponza.obj"));
+    let device_model = models::create_device_model(&host_model);
 
-    let transforms = vec![math::identity_mat4x4(); 1];
-
-    models::create_models_container(device_models, transforms)
+    device_model
 }
 
-fn create_mvp_techinique(models: &models::Models) -> technique::Technique {
+fn create_mvp_techinique(transforms: &Vec<math::Mat4x4f>) -> technique::Technique {
     technique::Technique {
         per_frame_uniforms: technique::Uniforms {
             vec1f: Vec::new(),
@@ -63,7 +65,7 @@ fn create_mvp_techinique(models: &models::Models) -> technique::Technique {
                         f32::consts::PI / 2.,
                         1.,
                         0.1,
-                        1000.,
+                        100000.,
                     )],
                 },
                 technique::Uniform::<math::Mat4x4f> {
@@ -82,8 +84,7 @@ fn create_mvp_techinique(models: &models::Models) -> technique::Technique {
             vec1u: Vec::new(),
             vec2f: Vec::new(),
             vec3f: Vec::new(),
-            mat4x4f: models
-                .transforms
+            mat4x4f: transforms
                 .iter()
                 .map(|&x| technique::Uniform::<math::Mat4x4f> {
                     name: "uModelMat4".to_string(),
@@ -92,18 +93,109 @@ fn create_mvp_techinique(models: &models::Models) -> technique::Technique {
                 })
                 .collect(),
         },
+        textures_2d: Vec::<models::Sampler2d>::new(),
     }
+}
+
+fn update_mvp_technique(tech: &mut technique::Technique, camera: &Camera) {
+    let view_mat_index = tech
+        .per_frame_uniforms
+        .mat4x4f
+        .iter()
+        .position(|x| x.name == "uViewMat4")
+        .expect("MVP technique must have uViewMat4");
+
+    let view_mat = tech.per_frame_uniforms.mat4x4f[view_mat_index]
+        .data
+        .first_mut()
+        .expect("uViewMat4 must have at one element value");
+
+    *view_mat = camera.view;
+}
+
+fn update_camera(camera: &mut Camera, window: &window::Window, input_data: &input::Data) {
+    let speed: f32 = 50.;
+    let world_forward = math::Vec4f {
+        x: 0.,
+        y: 0.,
+        z: -1.,
+        w: 0.,
+    };
+    let world_right = math::Vec4f {
+        x: -1.,
+        y: 0.,
+        z: 0.,
+        w: 0.,
+    };
+
+    let mut forward = math::zero_vec4::<f32>();
+    let mut right = math::zero_vec4::<f32>();
+    let camera_matrix = math::create_camera_mat4x4(camera.pos, camera.yaw, camera.pitch);
+
+    if let Some(input::Action::Press) | Some(input::Action::Repeat) =
+        input_data.keys.get(&input::Key::W)
+    {
+        forward = camera_matrix * world_forward * speed;
+    }
+    if let Some(input::Action::Press) | Some(input::Action::Repeat) =
+        input_data.keys.get(&input::Key::S)
+    {
+        forward = camera_matrix * -world_forward * speed;
+    }
+    if let Some(input::Action::Press) | Some(input::Action::Repeat) =
+        input_data.keys.get(&input::Key::A)
+    {
+        right = camera_matrix * world_right * speed;
+    }
+    if let Some(input::Action::Press) | Some(input::Action::Repeat) =
+        input_data.keys.get(&input::Key::D)
+    {
+        right = camera_matrix * -world_right * speed;
+    }
+    if let Some(input::Action::Press) | Some(input::Action::Repeat) =
+        input_data.keys.get(&input::Key::Q)
+    {
+        camera.pos.y -= speed;
+    }
+    if let Some(input::Action::Press) | Some(input::Action::Repeat) =
+        input_data.keys.get(&input::Key::E)
+    {
+        camera.pos.y += speed;
+    }
+
+    let x_dist = input_data.mouse.prev_pos.0 - input_data.mouse.pos.0;
+    let y_dist = input_data.mouse.prev_pos.1 - input_data.mouse.pos.1;
+
+    let yaw = (x_dist / window.width as f64) as f32;
+    let pitch = (y_dist / window.height as f64) as f32;
+
+    camera.pitch += pitch;
+    camera.yaw += yaw;
+    camera.pos.x += forward.x + right.x;
+    camera.pos.y += forward.y + right.y;
+    camera.pos.z += forward.z + right.z;
+
+    camera.view = math::create_view_mat4x4(camera.pos, camera.yaw, camera.pitch);
 }
 
 fn main_loop(window: &mut window::Window) {
     let mut input_data: input::Data = input::Data {
         keys: HashMap::new(),
+        mouse: input::Mouse {
+            pos: (0., 0.),
+            prev_pos: (0., 0.),
+        },
     };
 
-    let mut models = load_models();
-    let mut mvp_technique = create_mvp_techinique(&models);
-
-    models.transforms[0] = math::identity_mat4x4();
+    let mut device_model = load_device_model();
+    let transforms = vec![math::identity_mat4x4(); device_model.meshes.len()];
+    let mut mvp_technique = create_mvp_techinique(&transforms);
+    let mut camera = Camera {
+        view: math::identity_mat4x4(),
+        pos: math::zero_vec3(),
+        pitch: 0.,
+        yaw: 0.,
+    };
 
     let program = shader::create_shader_program(
         Path::new("shaders/pass_through.vert"),
@@ -112,17 +204,21 @@ fn main_loop(window: &mut window::Window) {
 
     technique::bind_shader_program_to_technique(&mut mvp_technique, &program);
 
-    shader::bind_device_model_to_shader_program(models.device_models.first().unwrap(), &program);
+    for device_material in &mut device_model.materials {
+        material::bind_shader_program_to_material(device_material, &program);
+    }
+
+    for device_mesh in &device_model.meshes {
+        shader::bind_device_mesh_to_shader_program(device_mesh, &program);
+    }
 
     while !window.handle.should_close() {
-        update_input(window, &mut input_data);
+        input::update_input(window, &mut input_data);
+        update_cursor_mode(window, &mut input_data);
+        update_camera(&mut camera, window, &input_data);
+        update_mvp_technique(&mut mvp_technique, &camera);
 
-        pass::execute_render_pass(
-            &window,
-            &program,
-            &mvp_technique,
-            models.device_models.first().unwrap(),
-        );
+        pass::execute_render_pass(&window, &program, &mvp_technique, &device_model);
         window.handle.swap_buffers();
     }
 }

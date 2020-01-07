@@ -26,6 +26,11 @@ pub struct ShaderProgramArrayUniform {
     pub name: String,
 }
 
+pub struct ShaderProgramTexture2d {
+    pub binding: u32,
+    pub name: String,
+}
+
 pub struct ShaderProgram {
     pub handle: u32,
     pub vert_shader_handle: u32,
@@ -33,6 +38,7 @@ pub struct ShaderProgram {
     pub attributes: Vec<ShaderProgramAttribute>,
     pub scalar_uniforms: Vec<ShaderProgramScalarUniform>,
     pub array_uniforms: Vec<ShaderProgramArrayUniform>,
+    pub sampler_2d: Vec<ShaderProgramTexture2d>,
 }
 
 pub fn create_shader_program(
@@ -88,29 +94,36 @@ pub fn create_shader_program(
                 frag_shader_file_path.file_name().unwrap().to_str().unwrap(),
             ],
         ),
+        sampler_2d: create_shader_program_2d_samplers(
+            vec![&vert_shader_source, &frag_shader_source],
+            vec![
+                vert_shader_file_path.file_name().unwrap().to_str().unwrap(),
+                frag_shader_file_path.file_name().unwrap().to_str().unwrap(),
+            ],
+        ),
     }
 }
 
-pub fn bind_device_model_to_shader_program(model: &models::DeviceModel, program: &ShaderProgram) {
+pub fn bind_device_mesh_to_shader_program(mesh: &models::DeviceMesh, program: &ShaderProgram) {
     assert!(
-        model.vbos.len() == model.attributes.len(),
+        mesh.vbos.len() == mesh.attributes.len(),
         "DeviceModel is invalid! There must be Attribute for each VBO.",
     );
 
     for program_attribute in &program.attributes {
-        for (i, device_model_attribute) in model.attributes.iter().enumerate() {
-            if device_model_attribute.name == program_attribute.name {
-                let vbo = model.vbos[i];
+        for (i, device_mesh_attribute) in mesh.attributes.iter().enumerate() {
+            if device_mesh_attribute.name == program_attribute.name {
+                let vbo = mesh.vbos[i];
                 unsafe {
-                    gl::BindVertexArray(model.vao);
+                    gl::BindVertexArray(mesh.vao);
                     gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
                     gl::EnableVertexAttribArray(program_attribute.location);
                     gl::VertexAttribPointer(
                         program_attribute.location,
-                        device_model_attribute.dimensions,
-                        device_model_attribute.data_type,
+                        device_mesh_attribute.dimensions,
+                        device_mesh_attribute.data_type,
                         gl::FALSE,
-                        device_model_attribute.stride,
+                        device_mesh_attribute.stride,
                         null(),
                     );
                 }
@@ -224,22 +237,26 @@ fn create_shader_program_attributes(
 ) -> Vec<ShaderProgramAttribute> {
     let mut attribs: Vec<ShaderProgramAttribute> = Vec::new();
 
-    for attribute_name in find_shader_program_inputs(file, ShaderProgramVariableType::IN, 0, 10) {
-        let c_attribute_name =
-            CString::new(attribute_name.clone()).expect("Failed to create CString.");
-        let location = unsafe { gl::GetAttribLocation(program, c_attribute_name.as_ptr()) };
-        if location != -1 {
-            attribs.push(ShaderProgramAttribute {
-                location: location as u32,
-                name: attribute_name.to_string(),
-            })
+    for attribute_name in find_shader_program_inputs(file, ShaderProgramVariableType::In, 0, 10) {
+        if let ShaderProgramInputFindResult::In(attribute_name) = attribute_name {
+            let c_attribute_name =
+                CString::new(attribute_name.clone()).expect("Failed to create CString.");
+            let location = unsafe { gl::GetAttribLocation(program, c_attribute_name.as_ptr()) };
+            if location != -1 {
+                attribs.push(ShaderProgramAttribute {
+                    location: location as u32,
+                    name: attribute_name.to_string(),
+                })
+            } else {
+                let message = format!(
+                    "Failed to get '{}' attribute location in shader '{}'",
+                    attribute_name, filename
+                )
+                .to_string();
+                println!("{}", message.yellow());
+            }
         } else {
-            let message = format!(
-                "Failed to get '{}' attribute location in shader '{}'",
-                attribute_name, filename
-            )
-            .to_string();
-            println!("{}", message.yellow());
+            panic!("Expected In result");
         }
     }
 
@@ -257,23 +274,33 @@ fn create_shader_program_scalar_uniforms(
     let mut i = 0;
     while i < files.len() {
         for uniform_name in
-            find_shader_program_inputs(files[i], ShaderProgramVariableType::UNIFORM, 10, 50)
+            find_shader_program_inputs(files[i], ShaderProgramVariableType::Uniform, 10, 50)
         {
-            let c_uniform_name =
-                CString::new(uniform_name.clone()).expect("Failed to create CString.");
-            let location = unsafe { gl::GetUniformLocation(program, c_uniform_name.as_ptr()) };
-            if location != -1 {
-                shader_program_scalar_uniform.push(ShaderProgramScalarUniform {
-                    location: location as u32,
-                    name: uniform_name,
-                })
+            if let ShaderProgramInputFindResult::Uniform(uniform_name) = uniform_name {
+                let c_uniform_name =
+                    CString::new(uniform_name.clone()).expect("Failed to create CString.");
+                if let None = shader_program_scalar_uniform
+                    .iter()
+                    .find(|x| x.name == uniform_name)
+                {
+                    let location =
+                        unsafe { gl::GetUniformLocation(program, c_uniform_name.as_ptr()) };
+                    if location != -1 {
+                        shader_program_scalar_uniform.push(ShaderProgramScalarUniform {
+                            location: location as u32,
+                            name: uniform_name,
+                        })
+                    } else {
+                        let message = format!(
+                            "Failed to get '{}' uniform location in shader '{}'",
+                            uniform_name, filenames[i]
+                        )
+                        .to_string();
+                        println!("{}", message.yellow());
+                    }
+                }
             } else {
-                let message = format!(
-                    "Failed to get '{}' uniform location in shader '{}'",
-                    uniform_name, filenames[i]
-                )
-                .to_string();
-                println!("{}", message.yellow());
+                panic!("Expected Uniform result");
             }
         }
 
@@ -291,9 +318,50 @@ fn create_shader_program_array_uniforms(
     Vec::new()
 }
 
+fn create_shader_program_2d_samplers(
+    files: Vec<&str>,
+    filenames: Vec<&str>,
+) -> Vec<ShaderProgramTexture2d> {
+    assert!(files.len() == filenames.len());
+
+    let mut shader_program_2d_samplers: Vec<ShaderProgramTexture2d> = Vec::new();
+    let mut i = 0;
+    while i < files.len() {
+        for sampler_name in
+            find_shader_program_inputs(files[i], ShaderProgramVariableType::Sampler2d, 10, 50)
+        {
+            if let ShaderProgramInputFindResult::Sampler2d(binding, sampler_name) = sampler_name {
+                if let None = shader_program_2d_samplers
+                    .iter()
+                    .find(|x| x.name == sampler_name)
+                {
+                    shader_program_2d_samplers.push(ShaderProgramTexture2d {
+                        binding,
+                        name: sampler_name,
+                    })
+                }
+            } else {
+                panic!("Expected Sampler2d result");
+            }
+        }
+
+        i += 1;
+    }
+
+    shader_program_2d_samplers
+}
+
 enum ShaderProgramVariableType {
-    IN,
-    UNIFORM,
+    In,
+    Uniform,
+    Sampler2d,
+}
+
+#[derive(PartialEq)]
+enum ShaderProgramInputFindResult {
+    In(String),
+    Uniform(String),
+    Sampler2d(u32, String),
 }
 
 fn find_shader_program_inputs(
@@ -301,23 +369,70 @@ fn find_shader_program_inputs(
     input_type: ShaderProgramVariableType,
     location_min: u32,
     location_max: u32,
-) -> Vec<String> {
-    let mut inputs: Vec<String> = Vec::new();
+) -> Vec<ShaderProgramInputFindResult> {
+    let mut inputs: Vec<ShaderProgramInputFindResult> = Vec::new();
 
     for n in location_min..location_max {
         let layout_location = match input_type {
-            ShaderProgramVariableType::IN => format!("layout (location = {}) in ", n),
-            ShaderProgramVariableType::UNIFORM => format!("layout (location = {}) uniform ", n),
+            ShaderProgramVariableType::In => format!("layout (location = {}) in ", n),
+            ShaderProgramVariableType::Uniform => format!("layout (location = {}) uniform ", n),
+            ShaderProgramVariableType::Sampler2d => {
+                format!(", location = {}) uniform sampler2D ", n)
+            }
         };
         let index = file.rfind(&layout_location);
 
         if let Some(index) = index {
             let index: usize = index + layout_location.chars().count();
             let last_index = index + file[index..].find(';').unwrap();
-            let attribute_name = file[index..last_index].split_whitespace().last();
 
-            if let Some(attribute_name) = attribute_name {
-                inputs.push(attribute_name.to_string());
+            if let Some(attribute_name) = file[index..last_index].split_whitespace().last() {
+                let attribute_name = attribute_name.to_string();
+                match input_type {
+                    ShaderProgramVariableType::In => {
+                        inputs.push(ShaderProgramInputFindResult::In(attribute_name))
+                    }
+                    ShaderProgramVariableType::Uniform => {
+                        inputs.push(ShaderProgramInputFindResult::Uniform(attribute_name))
+                    }
+                    ShaderProgramVariableType::Sampler2d => {
+                        let binding_end_index = index - layout_location.len();
+                        let binding_start_index = binding_end_index - 2;
+
+                        let binding = file[binding_start_index..binding_end_index]
+                            .trim()
+                            .parse()
+                            .expect("Failed to convert Sampler2D Binding to integer");
+
+                        assert!(
+                            None == inputs.iter().find(|input_find_result| {
+                                if let ShaderProgramInputFindResult::Sampler2d(
+                                    sampler_binding,
+                                    sampler_name,
+                                ) = input_find_result
+                                {
+                                    return *sampler_name == attribute_name
+                                        && *sampler_binding != binding;
+                                }
+                                false
+                            }),
+                            "Program contains multiple different bindings for {} sampler2d!",
+                            attribute_name
+                        );
+
+                        if let None = inputs.iter().find(|x| {
+                            if let ShaderProgramInputFindResult::Sampler2d(_, name) = x {
+                                return *name == attribute_name;
+                            }
+                            false
+                        }) {
+                            inputs.push(ShaderProgramInputFindResult::Sampler2d(
+                                binding,
+                                attribute_name.clone(),
+                            ))
+                        }
+                    }
+                }
             }
         }
     }

@@ -34,6 +34,37 @@ fn update_window_size(window: &mut window::Window) {
     window.height = height as u32;
 }
 
+fn update_hot_reload(
+    device_model: &mut models::DeviceModel,
+    techniques: &mut HashMap<String, technique::Technique>,
+    program: &mut shader::ShaderProgram,
+    input_data: &input::Data,
+) {
+    if let Some(input::Action::Press) = input_data.keys.get(&input::Key::F5) {
+        for device_material in &mut device_model.materials {
+            material::unbind_shader_program_from_material(device_material, &program);
+        }
+        for (_, technique) in techniques.iter_mut() {
+            technique::unbind_shader_program_from_technique(technique, &program);
+        }
+
+        shader::delete_shader_program(program);
+        *program = shader::create_shader_program(
+            Path::new("shaders/pass_through.vert"),
+            Path::new("shaders/pass_through.frag"),
+        );
+
+        for (_, technique) in techniques.iter_mut() {
+            technique::bind_shader_program_to_technique(technique, &program);
+        }
+        for device_material in &mut device_model.materials {
+            material::bind_shader_program_to_material(device_material, &program);
+        }
+
+        println!("Hot reload");
+    }
+}
+
 fn update_cursor_mode(window: &mut window::Window, input_data: &mut input::Data) {
     if let Some(input::Action::Press) = input_data.keys.get(&input::Key::F) {
         let mode = window.handle.get_cursor_mode();
@@ -70,7 +101,7 @@ fn create_mvp_technique(camera: &Camera, transforms: &Vec<math::Mat4x4f>) -> tec
             mat4x4f: vec![
                 technique::Uniform::<math::Mat4x4f> {
                     name: "uProjMat4".to_string(),
-                    location: technique::DEFAULT_UNIFORM_PROGRAM_LOCATION,
+                    locations: Vec::new(),
                     data: vec![math::perspective_projection_mat4x4(
                         camera.fov,
                         camera.aspect,
@@ -80,7 +111,7 @@ fn create_mvp_technique(camera: &Camera, transforms: &Vec<math::Mat4x4f>) -> tec
                 },
                 technique::Uniform::<math::Mat4x4f> {
                     name: "uViewMat4".to_string(),
-                    location: technique::DEFAULT_UNIFORM_PROGRAM_LOCATION,
+                    locations: Vec::new(),
                     data: vec![math::tranlation_mat4x4(math::Vec3f {
                         x: 0.,
                         y: 0.,
@@ -98,7 +129,7 @@ fn create_mvp_technique(camera: &Camera, transforms: &Vec<math::Mat4x4f>) -> tec
                 .iter()
                 .map(|&x| technique::Uniform::<math::Mat4x4f> {
                     name: "uModelMat4".to_string(),
-                    location: technique::DEFAULT_UNIFORM_PROGRAM_LOCATION,
+                    locations: Vec::new(),
                     data: vec![x * math::scale_uniform_mat4x4(5.)],
                 })
                 .collect(),
@@ -225,14 +256,21 @@ fn main_loop(window: &mut window::Window) {
         aspect: window.width as f32 / window.height as f32,
         fov: f32::consts::PI / 2. * 0.66,
     };
-    let mut mvp_technique = create_mvp_technique(&camera, &transforms);
+    let mut techniques: HashMap<String, technique::Technique> = HashMap::new();
+    techniques.insert(
+        "mvp".to_string(),
+        create_mvp_technique(&camera, &transforms),
+    );
 
-    let program = shader::create_shader_program(
+    let mut program = shader::create_shader_program(
         Path::new("shaders/pass_through.vert"),
         Path::new("shaders/pass_through.frag"),
     );
 
-    technique::bind_shader_program_to_technique(&mut mvp_technique, &program);
+    technique::bind_shader_program_to_technique(
+        techniques.get_mut(&"mvp".to_string()).unwrap(),
+        &program,
+    );
 
     for device_material in &mut device_model.materials {
         material::bind_shader_program_to_material(device_material, &program);
@@ -244,12 +282,23 @@ fn main_loop(window: &mut window::Window) {
 
     while !window.handle.should_close() {
         input::update_input(window, &mut input_data);
+        update_hot_reload(
+            &mut device_model,
+            &mut techniques,
+            &mut program,
+            &input_data,
+        );
         update_window_size(window);
         update_cursor_mode(window, &mut input_data);
         update_camera(&mut camera, window, &input_data);
-        update_mvp_technique(&mut mvp_technique, &camera);
+        update_mvp_technique(techniques.get_mut(&"mvp".to_string()).unwrap(), &camera);
 
-        pass::execute_render_pass(&window, &program, &mvp_technique, &device_model);
+        pass::execute_render_pass(
+            &window,
+            &program,
+            &techniques.get_mut(&"mvp".to_string()).unwrap(),
+            &device_model,
+        );
         window.handle.swap_buffers();
     }
 }

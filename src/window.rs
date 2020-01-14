@@ -19,8 +19,8 @@ pub struct Window {
 
 pub fn initialize_application() -> Window {
     let mut glfw = glfw::init(glfw::FAIL_ON_ERRORS).unwrap();
-    let width: u32 = 2048;
-    let height: u32 = 2048;
+    let width: u32 = 1024;
+    let height: u32 = 1024;
 
     glfw.window_hint(glfw::WindowHint::ContextVersion(4, 6));
     glfw.window_hint(glfw::WindowHint::Resizable(true));

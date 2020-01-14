@@ -25,5 +25,5 @@ void main()
 
     float Fcoef = 2.0 / log2(20000 + 1.0);
     //gl_Position.z = log2(max(1e-6, 1.0 + gl_Position.w)) * Fcoef - 1.0;
-    // depth = pow(gl_Position.z, 2048);
+    depth = gl_Position.z;
 }

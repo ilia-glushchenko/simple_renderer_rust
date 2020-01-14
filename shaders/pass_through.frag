@@ -20,5 +20,5 @@ void main()
     //outColor = vec4((normal + 1) / 2, 1);
     outColor = texture(uAlbedoMapSampler2D, uv, 0);
 
-    // outColor = vec4(depth.xxx, 1);
+    //outColor = vec4(pow(depth, 10).xxx, 1);
 }

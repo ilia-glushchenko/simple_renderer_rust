@@ -12,6 +12,17 @@ pub fn bind_shader_program_to_material(
     bind_shader_program_to_texture(program, &mut material.roughness_texture);
 }
 
+pub fn unbind_shader_program_from_material(
+    material: &mut models::DeviceMaterial,
+    program: &shader::ShaderProgram,
+) {
+    unbind_shader_program_from_texture(program, &mut material.albedo_texture);
+    unbind_shader_program_from_texture(program, &mut material.normal_texture);
+    unbind_shader_program_from_texture(program, &mut material.bump_texture);
+    unbind_shader_program_from_texture(program, &mut material.metallic_texture);
+    unbind_shader_program_from_texture(program, &mut material.roughness_texture);
+}
+
 pub fn bind_material(program: &shader::ShaderProgram, material: &models::DeviceMaterial) {
     bind_texture(program.handle, &material.albedo_texture);
     bind_texture(program.handle, &material.normal_texture);
@@ -65,5 +76,14 @@ fn bind_shader_program_to_texture(
                 program: program.handle,
             });
         }
+    }
+}
+
+fn unbind_shader_program_from_texture(
+    program: &shader::ShaderProgram,
+    sampler2d: &mut Option<models::Sampler2d>,
+) {
+    if let Some(sampler2d) = sampler2d {
+        sampler2d.bindings.retain(|b| b.program == program.handle);
     }
 }

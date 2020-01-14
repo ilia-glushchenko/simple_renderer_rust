@@ -104,6 +104,18 @@ pub fn create_shader_program(
     }
 }
 
+pub fn delete_shader_program(program: &mut ShaderProgram) {
+    unsafe {
+        gl::DeleteShader(program.vert_shader_handle);
+        gl::DeleteShader(program.frag_shader_handle);
+        gl::DeleteProgram(program.handle);
+    }
+    program.attributes.clear();
+    program.scalar_uniforms.clear();
+    program.array_uniforms.clear();
+    program.sampler_2d.clear();
+}
+
 pub fn bind_device_mesh_to_shader_program(mesh: &models::DeviceMesh, program: &ShaderProgram) {
     assert!(
         mesh.vbos.len() == mesh.attributes.len(),

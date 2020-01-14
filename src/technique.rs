@@ -6,11 +6,7 @@ use colored::Colorize;
 use std::string::String;
 use std::vec::Vec;
 
-pub const DEFAULT_UNIFORM_PROGRAM_LOCATION: UniformProgramLocation = UniformProgramLocation {
-    location: 0,
-    program: 0,
-};
-
+#[derive(PartialEq)]
 pub struct UniformProgramLocation {
     pub location: u32,
     pub program: u32,
@@ -18,7 +14,7 @@ pub struct UniformProgramLocation {
 
 pub struct Uniform<T> {
     pub name: String,
-    pub location: UniformProgramLocation,
+    pub locations: Vec<UniformProgramLocation>,
     pub data: Vec<T>,
 }
 
@@ -56,12 +52,35 @@ pub fn bind_shader_program_to_technique(
     bind_texture2d_to_shader_program(program, &mut technique.textures_2d);
 }
 
+pub fn unbind_shader_program_from_technique(
+    technique: &mut Technique,
+    program: &shader::ShaderProgram,
+) {
+    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_frame_uniforms.vec1f);
+    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_frame_uniforms.vec1u);
+    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_frame_uniforms.vec2f);
+    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_frame_uniforms.vec3f);
+    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_frame_uniforms.mat4x4f);
+
+    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_model_uniforms.vec1f);
+    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_model_uniforms.vec1u);
+    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_model_uniforms.vec2f);
+    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_model_uniforms.vec3f);
+    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_model_uniforms.mat4x4f);
+
+    unbind_texture2d_from_shader_program(program, &mut technique.textures_2d);
+}
+
 pub fn update_per_frame_uniforms(program: &shader::ShaderProgram, uniforms: &Uniforms) {
     for uniform in &uniforms.vec1f {
-        if uniform.location.program == program.handle {
+        if let Some(location) = uniform
+            .locations
+            .iter()
+            .find(|l| l.program == program.handle)
+        {
             unsafe {
                 gl::Uniform1fv(
-                    uniform.location.location as i32,
+                    location.location as i32,
                     uniform.data.len() as i32,
                     uniform.data.as_ptr() as *const f32,
                 );
@@ -70,10 +89,14 @@ pub fn update_per_frame_uniforms(program: &shader::ShaderProgram, uniforms: &Uni
     }
 
     for uniform in &uniforms.vec1u {
-        if uniform.location.program == program.handle {
+        if let Some(location) = uniform
+            .locations
+            .iter()
+            .find(|l| l.program == program.handle)
+        {
             unsafe {
                 gl::Uniform1uiv(
-                    uniform.location.location as i32,
+                    location.location as i32,
                     uniform.data.len() as i32,
                     uniform.data.as_ptr() as *const u32,
                 );
@@ -82,10 +105,14 @@ pub fn update_per_frame_uniforms(program: &shader::ShaderProgram, uniforms: &Uni
     }
 
     for uniform in &uniforms.vec2f {
-        if uniform.location.program == program.handle {
+        if let Some(location) = uniform
+            .locations
+            .iter()
+            .find(|l| l.program == program.handle)
+        {
             unsafe {
                 gl::Uniform2fv(
-                    uniform.location.location as i32,
+                    location.location as i32,
                     uniform.data.len() as i32,
                     uniform.data.as_ptr() as *const f32,
                 );
@@ -94,10 +121,14 @@ pub fn update_per_frame_uniforms(program: &shader::ShaderProgram, uniforms: &Uni
     }
 
     for uniform in &uniforms.vec3f {
-        if uniform.location.program == program.handle {
+        if let Some(location) = uniform
+            .locations
+            .iter()
+            .find(|l| l.program == program.handle)
+        {
             unsafe {
                 gl::Uniform3fv(
-                    uniform.location.location as i32,
+                    location.location as i32,
                     uniform.data.len() as i32,
                     uniform.data.as_ptr() as *const f32,
                 );
@@ -106,10 +137,14 @@ pub fn update_per_frame_uniforms(program: &shader::ShaderProgram, uniforms: &Uni
     }
 
     for uniform in &uniforms.mat4x4f {
-        if uniform.location.program == program.handle {
+        if let Some(location) = uniform
+            .locations
+            .iter()
+            .find(|l| l.program == program.handle)
+        {
             unsafe {
                 gl::UniformMatrix4fv(
-                    uniform.location.location as i32,
+                    location.location as i32,
                     uniform.data.len() as i32,
                     gl::TRUE, // Transposes the matrix, GL uses different major
                     uniform.data.as_ptr() as *const f32,
@@ -125,10 +160,14 @@ pub fn update_per_model_uniform(
     index: usize,
 ) {
     if let Some(uniform) = uniforms.vec1f.get(index) {
-        if uniform.location.program == program.handle {
+        if let Some(location) = uniform
+            .locations
+            .iter()
+            .find(|l| l.program == program.handle)
+        {
             unsafe {
                 gl::Uniform1fv(
-                    uniform.location.location as i32,
+                    location.location as i32,
                     uniform.data.len() as i32,
                     uniform.data.as_ptr() as *const f32,
                 );
@@ -137,10 +176,14 @@ pub fn update_per_model_uniform(
     }
 
     if let Some(uniform) = uniforms.vec1u.get(index) {
-        if uniform.location.program == program.handle {
+        if let Some(location) = uniform
+            .locations
+            .iter()
+            .find(|l| l.program == program.handle)
+        {
             unsafe {
                 gl::Uniform1uiv(
-                    uniform.location.location as i32,
+                    location.location as i32,
                     uniform.data.len() as i32,
                     uniform.data.as_ptr() as *const u32,
                 );
@@ -149,10 +192,14 @@ pub fn update_per_model_uniform(
     }
 
     if let Some(uniform) = uniforms.vec2f.get(index) {
-        if uniform.location.program == program.handle {
+        if let Some(location) = uniform
+            .locations
+            .iter()
+            .find(|l| l.program == program.handle)
+        {
             unsafe {
                 gl::Uniform2fv(
-                    uniform.location.location as i32,
+                    location.location as i32,
                     uniform.data.len() as i32,
                     uniform.data.as_ptr() as *const f32,
                 );
@@ -161,10 +208,14 @@ pub fn update_per_model_uniform(
     }
 
     if let Some(uniform) = uniforms.vec3f.get(index) {
-        if uniform.location.program == program.handle {
+        if let Some(location) = uniform
+            .locations
+            .iter()
+            .find(|l| l.program == program.handle)
+        {
             unsafe {
                 gl::Uniform3fv(
-                    uniform.location.location as i32,
+                    location.location as i32,
                     uniform.data.len() as i32,
                     uniform.data.as_ptr() as *const f32,
                 );
@@ -173,16 +224,29 @@ pub fn update_per_model_uniform(
     }
 
     if let Some(uniform) = uniforms.mat4x4f.get(index) {
-        if uniform.location.program == program.handle {
+        if let Some(location) = uniform
+            .locations
+            .iter()
+            .find(|l| l.program == program.handle)
+        {
             unsafe {
                 gl::UniformMatrix4fv(
-                    uniform.location.location as i32,
+                    location.location as i32,
                     uniform.data.len() as i32,
                     gl::TRUE, // Transposes the matrix, GL uses different major
                     uniform.data.as_ptr() as *const f32,
                 );
             }
         }
+    }
+}
+
+fn unbind_scalar_uniforms_from_shader_program<T>(
+    program: &shader::ShaderProgram,
+    uniforms: &mut [Uniform<T>],
+) {
+    for uniform in uniforms.iter_mut() {
+        uniform.locations.retain(|l| l.program != program.handle);
     }
 }
 
@@ -193,7 +257,11 @@ fn bind_scalar_uniforms_to_shader_program<T>(
     assert!(
         uniforms
             .iter()
-            .find(|&x| x.location.program == program.handle)
+            .find(|&uniform| uniform
+                .locations
+                .iter()
+                .find(|l| l.program == program.handle)
+                .is_some())
             .is_none(),
         "Uniforms can only be bound to a program once."
     );
@@ -204,8 +272,10 @@ fn bind_scalar_uniforms_to_shader_program<T>(
             .iter()
             .find(|x| x.name == uniform.name)
         {
-            uniform.location.program = program.handle;
-            uniform.location.location = program_uniform.location;
+            uniform.locations.push(UniformProgramLocation {
+                program: program.handle,
+                location: program_uniform.location,
+            });
         } else {
             let message = format!(
                 "Failed to find {} uniform location in program {}.",
@@ -215,7 +285,7 @@ fn bind_scalar_uniforms_to_shader_program<T>(
         }
     }
 
-    uniforms.sort_unstable_by(|a, b| a.location.program.cmp(&b.location.program));
+    // uniforms.sort_unstable_by(|a, b| a.location.program.cmp(&b.location.program));
 }
 
 fn bind_texture2d_to_shader_program(
@@ -251,5 +321,14 @@ fn bind_texture2d_to_shader_program(
             );
             println!("{}", message.yellow());
         }
+    }
+}
+
+fn unbind_texture2d_from_shader_program(
+    program: &shader::ShaderProgram,
+    textures: &mut [models::Sampler2d],
+) {
+    for texture in textures.iter_mut() {
+        texture.bindings.retain(|b| b.program != program.handle);
     }
 }

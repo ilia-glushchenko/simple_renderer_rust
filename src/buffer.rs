@@ -49,8 +49,8 @@ pub fn create_color_device_texture_descriptor(
         result = Some(DeviceTextureDescriptor {
             s_wrap: gl::REPEAT,
             t_wrap: gl::REPEAT,
-            mag_filter: gl::NEAREST,
-            min_filter: gl::NEAREST,
+            mag_filter: gl::LINEAR,
+            min_filter: gl::LINEAR,
             max_anisotropy: 16_f32,
             internal_format: convert_image_depth_to_gl_internal_format(host_texture.depth),
             format: convert_image_depth_to_gl_format(host_texture.depth),

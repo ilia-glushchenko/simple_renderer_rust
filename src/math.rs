@@ -1,5 +1,4 @@
 extern crate gl;
-extern crate impl_ops;
 use core::ops::Add;
 use core::ops::Div;
 use core::ops::Mul;

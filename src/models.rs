@@ -1,6 +1,7 @@
 extern crate stb_image;
 extern crate tobj;
 use crate::buffer;
+use crate::log;
 use crate::math;
 use stb_image::image;
 use std::mem::size_of;
@@ -124,11 +125,7 @@ pub fn load_host_model_from_obj(file_path: &Path) -> HostModel {
     let mut materials: Vec<HostMaterial> = Vec::new();
     for raw_material in &raw_materials {
         materials.push(create_host_material_from_tobj_material(
-            &file_path
-                .parent()
-                .unwrap_or(Path::new(""))
-                .canonicalize()
-                .expect("Failed to canonicalize texture path"),
+            &file_path.parent().unwrap_or(Path::new("")),
             raw_material,
         ));
     }
@@ -323,13 +320,10 @@ fn create_host_texture(path: &Path) -> Option<HostTexture> {
     let load_result = image::load(path);
 
     if let image::LoadResult::ImageU8(image) = load_result {
-        println!(
-            "Texture loaded as U8: {}",
-            path.canonicalize()
-                .unwrap_or_default()
-                .to_str()
-                .unwrap_or_default()
-        );
+        log::log_info(format!(
+            "Loaded 8-bit texture: {}",
+            path.to_str().unwrap_or_default()
+        ));
 
         return Some(HostTexture {
             name: String::from(
@@ -346,25 +340,19 @@ fn create_host_texture(path: &Path) -> Option<HostTexture> {
     }
 
     if let image::LoadResult::ImageF32(_image) = &load_result {
-        println!(
-            "Texture loaded as F32: {}",
-            path.canonicalize()
-                .unwrap_or_default()
-                .to_str()
-                .unwrap_or_default()
-        );
+        log::log_warning(format!(
+            "Loaded 32-bit texture: {}",
+            path.to_str().unwrap_or_default()
+        ));
     }
 
     if let image::LoadResult::Error(msg) = &load_result {
         if path.is_file() {
-            println!(
-                "Failed to load texture: {}",
-                path.canonicalize()
-                    .unwrap_or_default()
-                    .to_str()
-                    .unwrap_or_default()
-            );
-            println!("STB Message: {}", msg);
+            log::log_error(format!(
+                "Failed to load texture: {} \nSTB message: {}",
+                path.to_str().unwrap_or_default(),
+                msg
+            ));
         }
     }
 

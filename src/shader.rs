@@ -1,6 +1,6 @@
 extern crate colored;
+use crate::log;
 use crate::models;
-use colored::Colorize;
 use gl;
 use std::ffi::CString;
 use std::fs;
@@ -233,9 +233,13 @@ fn link_shader_program(
             gl::DeleteShader(frag_shader_handle);
         }
 
-        let c_string_log = CString::new(error_log).expect("CString::new failed");
-        println!("{}", c_string_log.to_str().unwrap().red());
-        return Result::Err(c_string_log.to_str().unwrap().to_string());
+        return Result::Err(
+            CString::new(error_log)
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string(),
+        );
     }
 
     //ToDo: Looks bad, change it to something?
@@ -260,12 +264,10 @@ fn create_shader_program_attributes(
                     name: attribute_name.to_string(),
                 })
             } else {
-                let message = format!(
+                log::log_warning(format!(
                     "Failed to get '{}' attribute location in shader '{}'",
                     attribute_name, filename
-                )
-                .to_string();
-                println!("{}", message.yellow());
+                ));
             }
         } else {
             panic!("Expected In result");
@@ -303,12 +305,10 @@ fn create_shader_program_scalar_uniforms(
                             name: uniform_name,
                         })
                     } else {
-                        let message = format!(
+                        log::log_warning(format!(
                             "Failed to get '{}' uniform location in shader '{}'",
                             uniform_name, filenames[i]
-                        )
-                        .to_string();
-                        println!("{}", message.yellow());
+                        ));
                     }
                 }
             } else {

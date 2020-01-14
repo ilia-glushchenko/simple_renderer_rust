@@ -1,4 +1,3 @@
-extern crate colored;
 extern crate gl_loader;
 extern crate glfw;
 
@@ -9,6 +8,7 @@ use std::path::Path;
 
 mod buffer;
 mod input;
+mod log;
 mod material;
 mod math;
 mod models;
@@ -61,7 +61,7 @@ fn update_hot_reload(
             material::bind_shader_program_to_material(device_material, &program);
         }
 
-        println!("Hot reload");
+        log::log_info("Hot reload".to_string());
     }
 }
 
@@ -267,6 +267,7 @@ fn main_loop(window: &mut window::Window) {
         Path::new("shaders/pass_through.frag"),
     );
 
+    //ToDo: Write shader validation routine
     technique::bind_shader_program_to_technique(
         techniques.get_mut(&"mvp".to_string()).unwrap(),
         &program,

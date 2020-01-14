@@ -1,8 +1,8 @@
 extern crate gl;
+use crate::log;
 use crate::math;
 use crate::models;
 use crate::shader;
-use colored::Colorize;
 use std::string::String;
 use std::vec::Vec;
 
@@ -277,15 +277,12 @@ fn bind_scalar_uniforms_to_shader_program<T>(
                 location: program_uniform.location,
             });
         } else {
-            let message = format!(
+            log::log_warning(format!(
                 "Failed to find {} uniform location in program {}.",
                 uniform.name, program.handle
-            );
-            println!("{}", message.yellow());
+            ));
         }
     }
-
-    // uniforms.sort_unstable_by(|a, b| a.location.program.cmp(&b.location.program));
 }
 
 fn bind_texture2d_to_shader_program(
@@ -315,11 +312,10 @@ fn bind_texture2d_to_shader_program(
                 program: program.handle,
             });
         } else {
-            let message = format!(
+            log::log_warning(format!(
                 "Failed to find {} sampler2d location in program {}.",
                 texture.texture.name, program.handle
-            );
-            println!("{}", message.yellow());
+            ));
         }
     }
 }

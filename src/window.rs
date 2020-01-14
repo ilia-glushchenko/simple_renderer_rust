@@ -3,7 +3,7 @@ extern crate gl;
 extern crate gl_loader;
 extern crate glfw;
 extern crate stb_image;
-use colored::*;
+use crate::log;
 use glfw::Context;
 use std::ffi::c_void;
 use std::ffi::CStr;
@@ -74,8 +74,8 @@ extern "system" fn gl_debug_callback(
 ) {
     let c_str: &CStr = unsafe { CStr::from_ptr(message) };
     if gltype == gl::DEBUG_TYPE_OTHER || gltype == gl::DEBUG_TYPE_MARKER {
-        println!("{}", c_str.to_str().unwrap().blue());
+        //log::log_info(c_str.to_str().unwrap().to_string());
     } else {
-        println!("{}", c_str.to_str().unwrap().red());
+        log::log_error(c_str.to_str().unwrap().to_string());
     }
 }

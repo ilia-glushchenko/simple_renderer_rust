@@ -13,26 +13,25 @@ pub struct Window {
     pub glfw: glfw::Glfw,
     pub handle: glfw::Window,
     pub events: std::sync::mpsc::Receiver<(f64, glfw::WindowEvent)>,
-    pub width: i32,
-    pub height: i32,
+    pub width: u32,
+    pub height: u32,
 }
 
 pub fn initialize_application() -> Window {
-    let glfw = glfw::init(glfw::FAIL_ON_ERRORS).unwrap();
-    let width: i32 = 1024;
-    let height: i32 = 1024;
+    let mut glfw = glfw::init(glfw::FAIL_ON_ERRORS).unwrap();
+    let width: u32 = 2048;
+    let height: u32 = 2048;
+
+    glfw.window_hint(glfw::WindowHint::ContextVersion(4, 6));
+    glfw.window_hint(glfw::WindowHint::Resizable(true));
 
     let (mut handle, events) = glfw
-        .create_window(
-            width as u32,
-            height as u32,
-            "Simple Renderer",
-            glfw::WindowMode::Windowed,
-        )
+        .create_window(width, height, "Simple Renderer", glfw::WindowMode::Windowed)
         .expect("Failed to create GLFW window.");
 
     handle.make_current();
     handle.set_key_polling(true);
+    handle.set_resizable(true);
 
     gl_loader::init_gl();
     gl::load_with(|symbol| gl_loader::get_proc_address(symbol) as *const _);

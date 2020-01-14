@@ -22,7 +22,7 @@ pub fn execute_render_pass(
         gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
 
         gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
-        gl::Viewport(0, 0, window.width, window.height);
+        gl::Viewport(0, 0, window.width as i32, window.height as i32);
         gl::UseProgram(program.handle);
     }
 

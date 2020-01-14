@@ -151,7 +151,14 @@ fn create_device_texture(
                 desc.format,
                 desc.data_type,
                 host_texture.data.as_ptr() as *const c_void,
-            )
+            );
+
+            gl::TexParameteri(
+                gl::TEXTURE_2D,
+                gl::TEXTURE_MIN_FILTER,
+                gl::LINEAR_MIPMAP_LINEAR as i32,
+            );
+            gl::GenerateMipmap(gl::TEXTURE_2D);
         }
 
         result = Some(models::Sampler2d {

@@ -1243,8 +1243,8 @@ pub fn perspective_projection_planes_mat4x4(
 }
 
 #[allow(dead_code)]
-pub fn perspective_projection_mat4x4(vfow: f32, aspect: f32, near: f32, far: f32) -> Mat4x4f {
-    let c = 1_f32 / (vfow / 2_f32).tan();
+pub fn perspective_projection_mat4x4(vfov: f32, aspect: f32, near: f32, far: f32) -> Mat4x4f {
+    let c = 1_f32 / (vfov / 2_f32).tan();
 
     let mut proj = null_mat4x4::<f32>();
     proj.r1.x = c / aspect;

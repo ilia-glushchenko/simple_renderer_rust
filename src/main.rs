@@ -22,6 +22,16 @@ struct Camera {
     pos: math::Vec3f,
     pitch: f32,
     yaw: f32,
+    near: f32,
+    far: f32,
+    aspect: f32,
+    fov: f32,
+}
+
+fn update_window_size(window: &mut window::Window) {
+    let (width, height) = window.handle.get_framebuffer_size();
+    window.width = width as u32;
+    window.height = height as u32;
 }
 
 fn update_cursor_mode(window: &mut window::Window, input_data: &mut input::Data) {
@@ -50,7 +60,7 @@ fn load_device_model() -> models::DeviceModel {
     device_model
 }
 
-fn create_mvp_techinique(transforms: &Vec<math::Mat4x4f>) -> technique::Technique {
+fn create_mvp_technique(camera: &Camera, transforms: &Vec<math::Mat4x4f>) -> technique::Technique {
     technique::Technique {
         per_frame_uniforms: technique::Uniforms {
             vec1f: Vec::new(),
@@ -62,10 +72,10 @@ fn create_mvp_techinique(transforms: &Vec<math::Mat4x4f>) -> technique::Techniqu
                     name: "uProjMat4".to_string(),
                     location: technique::DEFAULT_UNIFORM_PROGRAM_LOCATION,
                     data: vec![math::perspective_projection_mat4x4(
-                        f32::consts::PI / 2.,
-                        1.,
-                        0.1,
-                        100000.,
+                        camera.fov,
+                        camera.aspect,
+                        camera.near,
+                        camera.far,
                     )],
                 },
                 technique::Uniform::<math::Mat4x4f> {
@@ -108,9 +118,24 @@ fn update_mvp_technique(tech: &mut technique::Technique, camera: &Camera) {
     let view_mat = tech.per_frame_uniforms.mat4x4f[view_mat_index]
         .data
         .first_mut()
-        .expect("uViewMat4 must have at one element value");
+        .expect("uViewMat4 must have a value");
 
     *view_mat = camera.view;
+
+    let proj_mat_index = tech
+        .per_frame_uniforms
+        .mat4x4f
+        .iter()
+        .position(|x| x.name == "uProjMat4")
+        .expect("MVP technique must have uProjMat4");
+
+    let proj_mat = tech.per_frame_uniforms.mat4x4f[proj_mat_index]
+        .data
+        .first_mut()
+        .expect("uProjMat4 must have a value");
+
+    *proj_mat =
+        math::perspective_projection_mat4x4(camera.fov, camera.aspect, camera.near, camera.far)
 }
 
 fn update_camera(camera: &mut Camera, window: &window::Window, input_data: &input::Data) {
@@ -174,6 +199,7 @@ fn update_camera(camera: &mut Camera, window: &window::Window, input_data: &inpu
     camera.pos.x += forward.x + right.x;
     camera.pos.y += forward.y + right.y;
     camera.pos.z += forward.z + right.z;
+    camera.aspect = window.width as f32 / window.height as f32;
 
     camera.view = math::create_view_mat4x4(camera.pos, camera.yaw, camera.pitch);
 }
@@ -189,13 +215,17 @@ fn main_loop(window: &mut window::Window) {
 
     let mut device_model = load_device_model();
     let transforms = vec![math::identity_mat4x4(); device_model.meshes.len()];
-    let mut mvp_technique = create_mvp_techinique(&transforms);
     let mut camera = Camera {
         view: math::identity_mat4x4(),
         pos: math::zero_vec3(),
         pitch: 0.,
         yaw: 0.,
+        near: 10.0,
+        far: 20000.0,
+        aspect: window.width as f32 / window.height as f32,
+        fov: f32::consts::PI / 2. * 0.66,
     };
+    let mut mvp_technique = create_mvp_technique(&camera, &transforms);
 
     let program = shader::create_shader_program(
         Path::new("shaders/pass_through.vert"),
@@ -214,6 +244,7 @@ fn main_loop(window: &mut window::Window) {
 
     while !window.handle.should_close() {
         input::update_input(window, &mut input_data);
+        update_window_size(window);
         update_cursor_mode(window, &mut input_data);
         update_camera(&mut camera, window, &input_data);
         update_mvp_technique(&mut mvp_technique, &camera);

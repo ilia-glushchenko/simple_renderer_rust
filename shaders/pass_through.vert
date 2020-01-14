@@ -13,6 +13,7 @@ layout (location = 0) out vec4 color;
 layout (location = 1) out vec3 normal;
 layout (location = 2) out vec2 uv;
 layout (location = 3) out uint material;
+layout (location = 4) out float depth;
 
 void main()
 {
@@ -21,4 +22,8 @@ void main()
     normal = aNormal;
     uv = aUV;
     material = aMaterial;
+
+    float Fcoef = 2.0 / log2(20000 + 1.0);
+    //gl_Position.z = log2(max(1e-6, 1.0 + gl_Position.w)) * Fcoef - 1.0;
+    // depth = pow(gl_Position.z, 2048);
 }

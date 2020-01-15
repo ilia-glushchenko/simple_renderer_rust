@@ -1,11 +1,7 @@
-extern crate colored;
 use crate::log;
-use crate::models;
-use gl;
 use std::ffi::CString;
 use std::fs;
 use std::path::Path;
-use std::ptr::null;
 use std::result::Result;
 use std::string::String;
 use std::vec::Vec;
@@ -114,39 +110,6 @@ pub fn delete_shader_program(program: &mut ShaderProgram) {
     program.scalar_uniforms.clear();
     program.array_uniforms.clear();
     program.sampler_2d.clear();
-}
-
-pub fn bind_device_mesh_to_shader_program(mesh: &models::DeviceMesh, program: &ShaderProgram) {
-    assert!(
-        mesh.vbos.len() == mesh.attributes.len(),
-        "DeviceModel is invalid! There must be Attribute for each VBO.",
-    );
-
-    for program_attribute in &program.attributes {
-        for (i, device_mesh_attribute) in mesh.attributes.iter().enumerate() {
-            if device_mesh_attribute.name == program_attribute.name {
-                let vbo = mesh.vbos[i];
-                unsafe {
-                    gl::BindVertexArray(mesh.vao);
-                    gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
-                    gl::EnableVertexAttribArray(program_attribute.location);
-                    gl::VertexAttribPointer(
-                        program_attribute.location,
-                        device_mesh_attribute.dimensions,
-                        device_mesh_attribute.data_type,
-                        gl::FALSE,
-                        device_mesh_attribute.stride,
-                        null(),
-                    );
-                }
-            }
-        }
-
-        unsafe {
-            gl::BindVertexArray(0);
-            gl::BindBuffer(gl::ARRAY_BUFFER, 0);
-        }
-    }
 }
 
 fn create_shader(shader_source: &str, shader_type: gl::types::GLenum) -> Result<u32, String> {

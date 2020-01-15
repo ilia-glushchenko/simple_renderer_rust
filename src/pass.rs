@@ -1,16 +1,15 @@
 extern crate gl;
-use crate::material;
-use crate::models;
+use crate::app;
+use crate::model;
 use crate::shader;
 use crate::technique;
-use crate::window;
 use std::ptr::null;
 
 pub fn execute_render_pass(
-    window: &window::Window,
+    window: &app::Window,
     program: &shader::ShaderProgram,
     technique: &technique::Technique,
-    model: &models::DeviceModel,
+    model: &model::DeviceModel,
 ) {
     unsafe {
         gl::Enable(gl::DEPTH_TEST);
@@ -31,7 +30,7 @@ pub fn execute_render_pass(
             gl::BindVertexArray(mesh.vao);
         }
 
-        material::bind_material(&program, &model.materials[mesh.material_index as usize]);
+        bind_material(&program, &model.materials[mesh.material_index as usize]);
 
         technique::update_per_frame_uniforms(&program, &technique.per_frame_uniforms);
         technique::update_per_model_uniform(&program, &technique.per_model_uniforms, 0);
@@ -45,6 +44,44 @@ pub fn execute_render_pass(
             );
         }
 
-        material::unbind_material(&program, &model.materials[mesh.material_index as usize]);
+        unbind_material(&program, &model.materials[mesh.material_index as usize]);
+    }
+}
+
+fn bind_material(program: &shader::ShaderProgram, material: &model::DeviceMaterial) {
+    bind_texture(program.handle, &material.albedo_texture);
+    bind_texture(program.handle, &material.normal_texture);
+    bind_texture(program.handle, &material.bump_texture);
+    bind_texture(program.handle, &material.metallic_texture);
+    bind_texture(program.handle, &material.roughness_texture);
+}
+
+fn unbind_material(program: &shader::ShaderProgram, material: &model::DeviceMaterial) {
+    unbind_texture(program.handle, &material.albedo_texture);
+    unbind_texture(program.handle, &material.normal_texture);
+    unbind_texture(program.handle, &material.bump_texture);
+    unbind_texture(program.handle, &material.metallic_texture);
+    unbind_texture(program.handle, &material.roughness_texture);
+}
+
+fn bind_texture(program: u32, texture: &Option<model::Sampler2d>) {
+    if let Some(texture) = &texture {
+        if let Some(binding) = texture.bindings.iter().find(|x| x.program == program) {
+            unsafe {
+                gl::ActiveTexture(gl::TEXTURE0 as u32 + binding.binding);
+                gl::BindTexture(gl::TEXTURE_2D, texture.texture.handle);
+            }
+        }
+    }
+}
+
+fn unbind_texture(program: u32, texture: &Option<model::Sampler2d>) {
+    if let Some(texture) = &texture {
+        if let Some(binding) = texture.bindings.iter().find(|x| x.program == program) {
+            unsafe {
+                gl::ActiveTexture(gl::TEXTURE0 as u32 + binding.binding);
+                gl::BindTexture(gl::TEXTURE_2D, 0);
+            }
+        }
     }
 }

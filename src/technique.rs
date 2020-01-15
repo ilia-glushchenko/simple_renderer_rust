@@ -1,7 +1,7 @@
 extern crate gl;
 use crate::log;
 use crate::math;
-use crate::models;
+use crate::model;
 use crate::shader;
 use std::string::String;
 use std::vec::Vec;
@@ -29,8 +29,15 @@ pub struct Uniforms {
 pub struct Technique {
     pub per_frame_uniforms: Uniforms,
     pub per_model_uniforms: Uniforms,
-    pub textures_2d: Vec<models::Sampler2d>,
+    pub textures_2d: Vec<model::Sampler2d>,
 }
+
+#[derive(Hash, PartialEq)]
+pub enum Techniques {
+    MVP,
+}
+
+impl Eq for Techniques {}
 
 //ToDo: Check if all ShaderProgram dependencies are satisfied
 pub fn bind_shader_program_to_technique(
@@ -287,7 +294,7 @@ fn bind_scalar_uniforms_to_shader_program<T>(
 
 fn bind_texture2d_to_shader_program(
     program: &shader::ShaderProgram,
-    textures: &mut [models::Sampler2d],
+    textures: &mut [model::Sampler2d],
 ) {
     assert!(
         textures
@@ -307,7 +314,7 @@ fn bind_texture2d_to_shader_program(
             .iter()
             .find(|x| x.name == texture.texture.name)
         {
-            texture.bindings.push(models::SamplerProgramBinding {
+            texture.bindings.push(model::SamplerProgramBinding {
                 binding: program_sampler.binding,
                 program: program.handle,
             });
@@ -322,7 +329,7 @@ fn bind_texture2d_to_shader_program(
 
 fn unbind_texture2d_from_shader_program(
     program: &shader::ShaderProgram,
-    textures: &mut [models::Sampler2d],
+    textures: &mut [model::Sampler2d],
 ) {
     for texture in textures.iter_mut() {
         texture.bindings.retain(|b| b.program != program.handle);

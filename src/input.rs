@@ -1,6 +1,13 @@
 extern crate glfw;
-use crate::window;
+use crate::app;
+use crate::camera;
+use crate::log;
+use crate::math;
+use crate::model;
+use crate::shader;
+use crate::technique;
 use std::collections::HashMap;
+use std::path::Path;
 
 pub type Action = glfw::Action;
 pub type Key = glfw::Key;
@@ -15,7 +22,7 @@ pub struct Data {
     pub mouse: Mouse,
 }
 
-pub fn update_input(window: &mut window::Window, input_data: &mut Data) {
+pub fn update_input(window: &mut app::Window, input_data: &mut Data) {
     for (_, value) in &mut input_data.keys {
         if *value == Action::Press {
             *value = Action::Repeat;
@@ -37,4 +44,116 @@ pub fn update_input(window: &mut window::Window, input_data: &mut Data) {
         input_data.mouse.prev_pos = input_data.mouse.pos;
         input_data.mouse.pos = window.handle.get_cursor_pos();
     }
+}
+
+pub fn update_window_size(window: &mut app::Window) {
+    let (width, height) = window.handle.get_framebuffer_size();
+    if width > 0 && height > 0 {
+        window.width = width as u32;
+        window.height = height as u32;
+    }
+}
+
+pub fn update_hot_reload(
+    device_model: &mut model::DeviceModel,
+    techniques: &mut HashMap<technique::Techniques, technique::Technique>,
+    program: &mut shader::ShaderProgram,
+    input_data: &Data,
+) {
+    if let Some(Action::Press) = input_data.keys.get(&Key::F5) {
+        for device_material in &mut device_model.materials {
+            model::unbind_shader_program_from_material(device_material, &program);
+        }
+        for (_, technique) in techniques.iter_mut() {
+            technique::unbind_shader_program_from_technique(technique, &program);
+        }
+
+        shader::delete_shader_program(program);
+        *program = shader::create_shader_program(
+            Path::new("shaders/pass_through.vert"),
+            Path::new("shaders/pass_through.frag"),
+        );
+
+        for (_, technique) in techniques.iter_mut() {
+            technique::bind_shader_program_to_technique(technique, &program);
+        }
+        for device_material in &mut device_model.materials {
+            model::bind_shader_program_to_material(device_material, &program);
+        }
+
+        log::log_info("Hot reload".to_string());
+    }
+}
+
+pub fn update_cursor_mode(window: &mut app::Window, input_data: &mut Data) {
+    if let Some(Action::Press) = input_data.keys.get(&Key::F) {
+        let mode = window.handle.get_cursor_mode();
+        match mode {
+            glfw::CursorMode::Normal => {
+                window.handle.set_cursor_mode(glfw::CursorMode::Disabled);
+                input_data.mouse.pos = window.handle.get_cursor_pos();
+                input_data.mouse.prev_pos = input_data.mouse.pos;
+            }
+            glfw::CursorMode::Disabled => {
+                window.handle.set_cursor_mode(glfw::CursorMode::Normal);
+                input_data.mouse.pos = (0., 0.);
+                input_data.mouse.prev_pos = input_data.mouse.pos;
+            }
+            _ => panic!(),
+        };
+    }
+}
+
+pub fn update_camera(camera: &mut camera::Camera, window: &app::Window, input_data: &Data) {
+    let speed: f32 = 50.;
+    let world_forward = math::Vec4f {
+        x: 0.,
+        y: 0.,
+        z: -1.,
+        w: 0.,
+    };
+    let world_right = math::Vec4f {
+        x: -1.,
+        y: 0.,
+        z: 0.,
+        w: 0.,
+    };
+
+    let mut forward = math::zero_vec4::<f32>();
+    let mut right = math::zero_vec4::<f32>();
+    let camera_matrix = math::create_camera_mat4x4(camera.pos, camera.yaw, camera.pitch);
+
+    if let Some(Action::Press) | Some(Action::Repeat) = input_data.keys.get(&Key::W) {
+        forward = camera_matrix * world_forward * speed;
+    }
+    if let Some(Action::Press) | Some(Action::Repeat) = input_data.keys.get(&Key::S) {
+        forward = camera_matrix * -world_forward * speed;
+    }
+    if let Some(Action::Press) | Some(Action::Repeat) = input_data.keys.get(&Key::A) {
+        right = camera_matrix * world_right * speed;
+    }
+    if let Some(Action::Press) | Some(Action::Repeat) = input_data.keys.get(&Key::D) {
+        right = camera_matrix * -world_right * speed;
+    }
+    if let Some(Action::Press) | Some(Action::Repeat) = input_data.keys.get(&Key::Q) {
+        camera.pos.y -= speed;
+    }
+    if let Some(Action::Press) | Some(Action::Repeat) = input_data.keys.get(&Key::E) {
+        camera.pos.y += speed;
+    }
+
+    let x_dist = input_data.mouse.prev_pos.0 - input_data.mouse.pos.0;
+    let y_dist = input_data.mouse.prev_pos.1 - input_data.mouse.pos.1;
+
+    let yaw = (x_dist / window.width as f64) as f32;
+    let pitch = (y_dist / window.height as f64) as f32;
+
+    camera.pitch += pitch;
+    camera.yaw += yaw;
+    camera.pos.x += forward.x + right.x;
+    camera.pos.y += forward.y + right.y;
+    camera.pos.z += forward.z + right.z;
+    camera.aspect = window.width as f32 / window.height as f32;
+
+    camera.view = math::create_view_mat4x4(camera.pos, camera.yaw, camera.pitch);
 }

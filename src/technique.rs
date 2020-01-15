@@ -285,7 +285,7 @@ fn bind_scalar_uniforms_to_shader_program<T>(
             });
         } else {
             log::log_warning(format!(
-                "Failed to find {} uniform location in program {}.",
+                "Failed to find '{}' uniform location in program '{}'",
                 uniform.name, program.handle
             ));
         }
@@ -320,7 +320,7 @@ fn bind_texture2d_to_shader_program(
             });
         } else {
             log::log_warning(format!(
-                "Failed to find {} sampler2d location in program {}.",
+                "Failed to find '{}' sampler2d location in program '{}'",
                 texture.texture.name, program.handle
             ));
         }

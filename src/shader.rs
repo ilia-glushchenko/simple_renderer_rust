@@ -1,7 +1,5 @@
 use crate::log;
 use std::ffi::CString;
-use std::fs;
-use std::path::Path;
 use std::result::Result;
 use std::string::String;
 use std::vec::Vec;
@@ -27,6 +25,24 @@ pub struct ShaderProgramTexture2d {
     pub name: String,
 }
 
+pub struct ShaderProgramOutput {
+    pub name: String,
+    pub format: String,
+}
+
+#[derive(Clone)]
+pub struct HostShaderProgramDescriptor {
+    pub name: String,
+    pub vert_shader_file_path: String,
+    pub frag_shader_file_path: String,
+}
+
+pub struct HostShaderProgram {
+    pub descriptor: HostShaderProgramDescriptor,
+    pub vert_shader_source: String,
+    pub frag_shader_source: String,
+}
+
 pub struct ShaderProgram {
     pub handle: u32,
     pub vert_shader_handle: u32,
@@ -35,69 +51,95 @@ pub struct ShaderProgram {
     pub scalar_uniforms: Vec<ShaderProgramScalarUniform>,
     pub array_uniforms: Vec<ShaderProgramArrayUniform>,
     pub sampler_2d: Vec<ShaderProgramTexture2d>,
+    pub outputs: Vec<ShaderProgramOutput>,
 }
 
 pub fn create_shader_program(
-    vert_shader_file_path: &Path,
-    frag_shader_file_path: &Path,
-) -> ShaderProgram {
+    host_shader_program: &HostShaderProgram,
+) -> Result<ShaderProgram, String> {
     assert!(
-        vert_shader_file_path.exists(),
-        "Vert shader file does not exists."
+        !host_shader_program
+            .descriptor
+            .vert_shader_file_path
+            .is_empty(),
+        "Host shader program must provide vert file path"
     );
     assert!(
-        frag_shader_file_path.exists(),
-        "Frag shader file does not exists."
+        !host_shader_program
+            .descriptor
+            .frag_shader_file_path
+            .is_empty(),
+        "Host shader program must provide frag file path",
+    );
+    assert!(
+        !host_shader_program.vert_shader_source.is_empty(),
+        "Host shader program must provide vert source conde"
+    );
+    assert!(
+        !host_shader_program.frag_shader_source.is_empty(),
+        "Host shader program must provide frag source code"
     );
 
-    let handle = unsafe { gl::CreateProgram() };
-
-    let vert_shader_source =
-        fs::read_to_string(vert_shader_file_path).expect("Failed to load shader code.");
     let vert_shader_handle =
-        create_shader(&vert_shader_source, gl::VERTEX_SHADER).expect("Failed to create shader.");
-
-    let frag_shader_source =
-        fs::read_to_string(frag_shader_file_path).expect("Failed to load shader code.");
+        create_shader(&host_shader_program.vert_shader_source, gl::VERTEX_SHADER);
+    if let Err(msg) = vert_shader_handle {
+        return Result::Err(format!("Failed to create shader:\n{}", msg));
+    }
+    let vert_shader_handle = vert_shader_handle.unwrap();
     let frag_shader_handle =
-        create_shader(&frag_shader_source, gl::FRAGMENT_SHADER).expect("Failed to create shader.");
+        create_shader(&host_shader_program.frag_shader_source, gl::FRAGMENT_SHADER);
+    if let Err(msg) = frag_shader_handle {
+        return Result::Err(format!("Failed to create shader:\n{}", msg));
+    }
+    let frag_shader_handle = frag_shader_handle.unwrap();
+    let handle = unsafe { gl::CreateProgram() };
+    if let Err(msg) = link_shader_program(handle, vert_shader_handle, frag_shader_handle) {
+        return Result::Err(format!("Failed to link shader program:\n{}", msg));
+    }
 
-    link_shader_program(handle, vert_shader_handle, frag_shader_handle)
-        .expect("Failed to link shader program.");
-
-    ShaderProgram {
+    Result::Ok(ShaderProgram {
         handle,
         vert_shader_handle,
         frag_shader_handle,
         attributes: create_shader_program_attributes(
             handle,
-            &vert_shader_source,
-            vert_shader_file_path.file_name().unwrap().to_str().unwrap(),
+            &host_shader_program.vert_shader_source,
+            &host_shader_program.descriptor.vert_shader_file_path,
         ),
         scalar_uniforms: create_shader_program_scalar_uniforms(
             handle,
-            vec![&vert_shader_source, &frag_shader_source],
             vec![
-                vert_shader_file_path.file_name().unwrap().to_str().unwrap(),
-                frag_shader_file_path.file_name().unwrap().to_str().unwrap(),
+                &host_shader_program.vert_shader_source,
+                &host_shader_program.frag_shader_source,
+            ],
+            vec![
+                &host_shader_program.descriptor.vert_shader_file_path,
+                &host_shader_program.descriptor.frag_shader_file_path,
             ],
         ),
         array_uniforms: create_shader_program_array_uniforms(
             handle,
-            vec![&vert_shader_source, &frag_shader_source],
             vec![
-                vert_shader_file_path.file_name().unwrap().to_str().unwrap(),
-                frag_shader_file_path.file_name().unwrap().to_str().unwrap(),
+                &host_shader_program.vert_shader_source,
+                &host_shader_program.frag_shader_source,
+            ],
+            vec![
+                &host_shader_program.descriptor.vert_shader_file_path,
+                &host_shader_program.descriptor.frag_shader_file_path,
             ],
         ),
         sampler_2d: create_shader_program_2d_samplers(
-            vec![&vert_shader_source, &frag_shader_source],
             vec![
-                vert_shader_file_path.file_name().unwrap().to_str().unwrap(),
-                frag_shader_file_path.file_name().unwrap().to_str().unwrap(),
+                &host_shader_program.vert_shader_source,
+                &host_shader_program.frag_shader_source,
+            ],
+            vec![
+                &host_shader_program.descriptor.vert_shader_file_path,
+                &host_shader_program.descriptor.frag_shader_file_path,
             ],
         ),
-    }
+        outputs: create_shader_program_outputs(&host_shader_program.frag_shader_source),
+    })
 }
 
 pub fn delete_shader_program(program: &mut ShaderProgram) {
@@ -115,40 +157,40 @@ pub fn delete_shader_program(program: &mut ShaderProgram) {
 fn create_shader(shader_source: &str, shader_type: gl::types::GLenum) -> Result<u32, String> {
     assert!(shader_type == gl::VERTEX_SHADER || shader_type == gl::FRAGMENT_SHADER);
 
-    unsafe {
-        let handle = gl::CreateShader(shader_type);
-        if handle == 0 {
-            return Result::Err("Failed to create OpenGL shader.".to_string());
-        }
+    let handle = unsafe { gl::CreateShader(shader_type) };
+    if handle == 0 {
+        return Result::Err("Failed to create OpenGL shader.".to_string());
+    }
 
-        let data_ptr = &(shader_source.as_ptr() as *const i8) as *const *const i8;
-        let length = shader_source.len() as i32;
-        gl::ShaderSource(handle, 1, data_ptr, &length as *const i32);
+    let data_ptr = &(shader_source.as_ptr() as *const i8) as *const *const i8;
+    let length = shader_source.len() as i32;
 
-        gl::CompileShader(handle);
+    unsafe { gl::ShaderSource(handle, 1, data_ptr, &length as *const i32) };
+    unsafe { gl::CompileShader(handle) };
 
-        let mut is_compiled: i32 = 0;
-        gl::GetShaderiv(handle, gl::COMPILE_STATUS, &mut is_compiled as *mut i32);
-        if is_compiled == 0 {
-            let mut max_length: i32 = 0;
-            gl::GetShaderiv(handle, gl::INFO_LOG_LENGTH, &mut max_length as *mut i32);
+    let mut is_compiled: i32 = 0;
+    unsafe { gl::GetShaderiv(handle, gl::COMPILE_STATUS, &mut is_compiled as *mut i32) };
+    if is_compiled == 0 {
+        let mut max_length: i32 = 0;
+        unsafe { gl::GetShaderiv(handle, gl::INFO_LOG_LENGTH, &mut max_length as *mut i32) };
 
-            let mut error_log: Vec<i8> = vec![0; max_length as usize];
+        let mut error_log: Vec<i8> = vec![0; max_length as usize];
+        unsafe {
             gl::GetShaderInfoLog(
                 handle,
                 max_length,
                 &mut max_length as *mut i32,
                 error_log.as_mut_ptr(),
-            );
-            error_log.resize(max_length as usize, 0);
+            )
+        };
+        error_log.resize(max_length as usize, 0);
 
-            gl::DeleteShader(handle);
+        unsafe { gl::DeleteShader(handle) };
 
-            return Result::Err(error_log.iter().map(ToString::to_string).collect());
-        }
-
-        Result::Ok(handle)
+        return Result::Err(error_log.iter().map(|x| *x as u8 as char).collect());
     }
+
+    Result::Ok(handle)
 }
 
 fn link_shader_program(
@@ -167,19 +209,13 @@ fn link_shader_program(
     }
 
     let mut is_linked: i32 = 0;
-    unsafe {
-        gl::GetProgramiv(handle, gl::LINK_STATUS, &mut is_linked as *mut i32);
-    }
+    unsafe { gl::GetProgramiv(handle, gl::LINK_STATUS, &mut is_linked as *mut i32) };
 
     if is_linked == 0 {
         let mut max_length: i32 = 0;
-
-        unsafe {
-            gl::GetProgramiv(handle, gl::INFO_LOG_LENGTH, &mut max_length as *mut i32);
-        }
+        unsafe { gl::GetProgramiv(handle, gl::INFO_LOG_LENGTH, &mut max_length as *mut i32) };
 
         let mut error_log: Vec<u8> = vec![0; max_length as usize];
-
         unsafe {
             gl::GetProgramInfoLog(
                 handle,
@@ -326,10 +362,27 @@ fn create_shader_program_2d_samplers(
     shader_program_2d_samplers
 }
 
+fn create_shader_program_outputs(file: &str) -> Vec<ShaderProgramOutput> {
+    let mut shader_program_outputs: Vec<ShaderProgramOutput> = Vec::new();
+
+    for output in find_shader_program_inputs(file, ShaderProgramVariableType::Output, 0, 8) {
+        if let ShaderProgramInputFindResult::Output(name, format) = output {
+            if let None = shader_program_outputs.iter().find(|x| x.name == name) {
+                shader_program_outputs.push(ShaderProgramOutput { name, format })
+            }
+        } else {
+            panic!("Expected Output result");
+        }
+    }
+
+    shader_program_outputs
+}
+
 enum ShaderProgramVariableType {
     In,
     Uniform,
     Sampler2d,
+    Output,
 }
 
 #[derive(PartialEq)]
@@ -337,6 +390,7 @@ enum ShaderProgramInputFindResult {
     In(String),
     Uniform(String),
     Sampler2d(u32, String),
+    Output(String, String),
 }
 
 fn find_shader_program_inputs(
@@ -351,6 +405,7 @@ fn find_shader_program_inputs(
         let layout_location = match input_type {
             ShaderProgramVariableType::In => format!("layout (location = {}) in ", n),
             ShaderProgramVariableType::Uniform => format!("layout (location = {}) uniform ", n),
+            ShaderProgramVariableType::Output => format!("layout (location = {}) out ", n),
             ShaderProgramVariableType::Sampler2d => {
                 format!(", location = {}) uniform sampler2D ", n)
             }
@@ -369,6 +424,16 @@ fn find_shader_program_inputs(
                     }
                     ShaderProgramVariableType::Uniform => {
                         inputs.push(ShaderProgramInputFindResult::Uniform(attribute_name))
+                    }
+                    ShaderProgramVariableType::Output => {
+                        let mut rev_it = file[index..last_index].split_whitespace().rev();
+
+                        if let (Some(name), Some(format)) = (rev_it.next(), rev_it.next()) {
+                            inputs.push(ShaderProgramInputFindResult::Output(
+                                name.to_string(),
+                                format.to_string(),
+                            ))
+                        }
                     }
                     ShaderProgramVariableType::Sampler2d => {
                         let binding_end_index = index - layout_location.len();

@@ -32,7 +32,11 @@ fn create_mvp_technique(
             vec1f: Vec::new(),
             vec1u: Vec::new(),
             vec2f: Vec::new(),
-            vec3f: Vec::new(),
+            vec3f: vec![technique::Uniform::<math::Vec3f> {
+                name: "uCameraPosVec3".to_string(),
+                locations: Vec::new(),
+                data: vec![camera.pos],
+            }],
             mat4x4f: vec![
                 technique::Uniform::<math::Mat4x4f> {
                     name: "uProjMat4".to_string(),
@@ -80,12 +84,10 @@ fn update_mvp_technique(tech: &mut technique::Technique, camera: &camera::Camera
         .iter()
         .position(|x| x.name == "uViewMat4")
         .expect("MVP technique must have uViewMat4");
-
     let view_mat = tech.per_frame_uniforms.mat4x4f[view_mat_index]
         .data
         .first_mut()
         .expect("uViewMat4 must have a value");
-
     *view_mat = camera.view;
 
     let proj_mat_index = tech
@@ -94,14 +96,61 @@ fn update_mvp_technique(tech: &mut technique::Technique, camera: &camera::Camera
         .iter()
         .position(|x| x.name == "uProjMat4")
         .expect("MVP technique must have uProjMat4");
-
     let proj_mat = tech.per_frame_uniforms.mat4x4f[proj_mat_index]
         .data
         .first_mut()
         .expect("uProjMat4 must have a value");
-
     *proj_mat =
-        math::perspective_projection_mat4x4(camera.fov, camera.aspect, camera.near, camera.far)
+        math::perspective_projection_mat4x4(camera.fov, camera.aspect, camera.near, camera.far);
+
+    let camera_pos_index = tech
+        .per_frame_uniforms
+        .vec3f
+        .iter()
+        .position(|x| x.name == "uCameraPosVec3")
+        .expect("MVP technique must have uCameraPosVec3");
+    let camera_pos_vec = tech.per_frame_uniforms.vec3f[camera_pos_index]
+        .data
+        .first_mut()
+        .expect("uCameraPosVec3 must have a value");
+    *camera_pos_vec = camera.pos;
+}
+
+fn create_linghting_pass(window: &app::Window) -> Result<pass::Pass, String> {
+    let lighting_pass_descriptor = pass::PassDescriptor {
+        name: "lighting".to_string(),
+        program: shader::HostShaderProgramDescriptor {
+            name: "lighting".to_string(),
+            vert_shader_file_path: "shaders/pass_through.vert".to_string(),
+            frag_shader_file_path: "shaders/pass_through.frag".to_string(),
+        },
+        techniques: vec![technique::Techniques::MVP],
+        attachments: vec![
+            pass::PassAttachmentDescriptor {
+                flavor: pass::PassAttachments::Depth(1., gl::LESS),
+                clear: true,
+                write: true,
+                width: window.width,
+                height: window.height,
+            },
+            pass::PassAttachmentDescriptor {
+                flavor: pass::PassAttachments::Color(math::Vec4f {
+                    x: 1.,
+                    y: 1.,
+                    z: 1.,
+                    w: 1.,
+                }),
+                clear: true,
+                write: true,
+                width: window.width,
+                height: window.height,
+            },
+        ],
+        width: window.width,
+        height: window.height,
+    };
+
+    pass::create_render_pass(lighting_pass_descriptor)
 }
 
 fn main_loop(window: &mut app::Window) {
@@ -122,33 +171,11 @@ fn main_loop(window: &mut app::Window) {
         create_mvp_technique(&camera, &transforms),
     );
 
-    let mut program = shader::create_shader_program(
-        Path::new("shaders/pass_through.vert"),
-        Path::new("shaders/pass_through.frag"),
-    );
-
-    //ToDo: Write shader validation routine
-    technique::bind_shader_program_to_technique(
-        techniques.get_mut(&technique::Techniques::MVP).unwrap(),
-        &program,
-    );
-
-    for device_material in &mut device_model.materials {
-        model::bind_shader_program_to_material(device_material, &program);
-    }
-
-    for device_mesh in &device_model.meshes {
-        model::bind_device_mesh_to_shader_program(device_mesh, &program);
-    }
+    let mut lighting_pass = create_linghting_pass(window).unwrap();
+    pass::bind_shader_program_to_pass(&mut device_model, &mut techniques, &lighting_pass.program);
 
     while !window.handle.should_close() {
         input::update_input(window, &mut input_data);
-        input::update_hot_reload(
-            &mut device_model,
-            &mut techniques,
-            &mut program,
-            &input_data,
-        );
         input::update_window_size(window);
         input::update_cursor_mode(window, &mut input_data);
         input::update_camera(&mut camera, window, &input_data);
@@ -157,15 +184,18 @@ fn main_loop(window: &mut app::Window) {
             techniques.get_mut(&technique::Techniques::MVP).unwrap(),
             &camera,
         );
+        pass::execute_render_pass(&lighting_pass, &techniques, &device_model);
+        pass::blit_framebuffer_to_backbuffer(&lighting_pass, window);
 
-        pass::execute_render_pass(
-            &window,
-            &program,
-            &techniques.get_mut(&technique::Techniques::MVP).unwrap(),
-            &device_model,
-        );
         window.handle.swap_buffers();
     }
+
+    pass::unbind_shader_program_from_pass(
+        &mut device_model,
+        &mut techniques,
+        &lighting_pass.program,
+    );
+    pass::delete_render_pass(&mut lighting_pass);
 }
 
 fn main() {

@@ -3,10 +3,10 @@ use std::ffi::c_void;
 use std::mem::size_of;
 
 pub struct BufferDescriptor {
-    target: u32,
-    size: u32,
-    count: u32,
-    data: *const c_void,
+    pub target: u32,
+    pub size: u32,
+    pub count: u32,
+    pub data: *const c_void,
 }
 
 pub fn create_buffer(desc: &BufferDescriptor) -> Result<u32, String> {

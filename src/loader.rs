@@ -3,9 +3,51 @@ extern crate tobj;
 use crate::log;
 use crate::math;
 use crate::model;
+use crate::shader;
 use crate::texture;
 use stb_image::image;
+use std::fs;
 use std::path::Path;
+
+pub fn load_host_shader_program(
+    descriptor: &shader::HostShaderProgramDescriptor,
+) -> Result<shader::HostShaderProgram, String> {
+    if descriptor.name.is_empty() {
+        return Result::Err("Empty host shader program name".to_string());
+    }
+
+    let vert_shader_os_file_path = Path::new(&descriptor.vert_shader_file_path);
+    if !vert_shader_os_file_path.exists() {
+        return Result::Err(format!(
+            "Shader file does not exists: {}",
+            descriptor.vert_shader_file_path
+        ));
+    }
+    let frag_shader_os_file_path = Path::new(&descriptor.frag_shader_file_path);
+    if !frag_shader_os_file_path.exists() {
+        return Result::Err(format!(
+            "Shader file does not exists: {}",
+            descriptor.frag_shader_file_path
+        ));
+    }
+
+    let vert_shader_source = fs::read_to_string(vert_shader_os_file_path);
+    if let Err(msg) = vert_shader_source {
+        return Result::Err(format!("Failed to load shader code: {}", msg));
+    }
+    let vert_shader_source = vert_shader_source.unwrap();
+    let frag_shader_source = fs::read_to_string(frag_shader_os_file_path);
+    if let Err(msg) = frag_shader_source {
+        return Result::Err(format!("Failed to load shader code: {}", msg));
+    }
+    let frag_shader_source = frag_shader_source.unwrap();
+
+    Result::Ok(shader::HostShaderProgram {
+        descriptor: descriptor.clone(),
+        vert_shader_source,
+        frag_shader_source,
+    })
+}
 
 pub fn load_host_model_from_obj(file_path: &Path) -> model::HostModel {
     assert!(
@@ -28,6 +70,12 @@ pub fn load_host_model_from_obj(file_path: &Path) -> model::HostModel {
     for raw_model in &raw_models {
         meshes.push(create_host_mesh_from_tobj_mesh(raw_model));
     }
+
+    // {
+    //     meshes.first_mut().unwrap().material_index = 0;
+    //     materials = vec![materials[meshes.first().unwrap().material_index as usize].clone()];
+    //     meshes = vec![meshes.first().unwrap().clone()];
+    // }
 
     model::HostModel { meshes, materials }
 }

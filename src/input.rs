@@ -1,13 +1,8 @@
 extern crate glfw;
 use crate::app;
 use crate::camera;
-use crate::log;
 use crate::math;
-use crate::model;
-use crate::shader;
-use crate::technique;
 use std::collections::HashMap;
-use std::path::Path;
 
 pub type Action = glfw::Action;
 pub type Key = glfw::Key;
@@ -51,37 +46,6 @@ pub fn update_window_size(window: &mut app::Window) {
     if width > 0 && height > 0 {
         window.width = width as u32;
         window.height = height as u32;
-    }
-}
-
-pub fn update_hot_reload(
-    device_model: &mut model::DeviceModel,
-    techniques: &mut HashMap<technique::Techniques, technique::Technique>,
-    program: &mut shader::ShaderProgram,
-    input_data: &Data,
-) {
-    if let Some(Action::Press) = input_data.keys.get(&Key::F5) {
-        for device_material in &mut device_model.materials {
-            model::unbind_shader_program_from_material(device_material, &program);
-        }
-        for (_, technique) in techniques.iter_mut() {
-            technique::unbind_shader_program_from_technique(technique, &program);
-        }
-
-        shader::delete_shader_program(program);
-        *program = shader::create_shader_program(
-            Path::new("shaders/pass_through.vert"),
-            Path::new("shaders/pass_through.frag"),
-        );
-
-        for (_, technique) in techniques.iter_mut() {
-            technique::bind_shader_program_to_technique(technique, &program);
-        }
-        for device_material in &mut device_model.materials {
-            model::bind_shader_program_to_material(device_material, &program);
-        }
-
-        log::log_info("Hot reload".to_string());
     }
 }
 

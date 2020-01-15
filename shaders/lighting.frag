@@ -13,5 +13,6 @@ layout (location = 0) out vec4 outColor;
 
 void main()
 {
-    outColor = texture(uAlbedoMapSampler2D, uv, 0);
+    //outColor = texture(uAlbedoMapSampler2D, uv, 0) * 0.1;
+    outColor = vec4(0, 0, 1, 1);
 }

@@ -1,6 +1,7 @@
 extern crate gl;
 use crate::app;
 use crate::loader;
+use crate::log;
 use crate::math;
 use crate::model;
 use crate::shader;
@@ -57,35 +58,6 @@ pub struct Pass {
     pub height: u32,
 }
 
-pub fn bind_shader_program_to_pass(
-    device_model: &mut model::DeviceModel,
-    techniques: &mut HashMap<technique::Techniques, technique::Technique>,
-    program: &shader::ShaderProgram,
-) {
-    for (_, technique) in techniques.iter_mut() {
-        technique::bind_shader_program_to_technique(technique, &program);
-    }
-    for device_material in &mut device_model.materials {
-        model::bind_shader_program_to_material(device_material, &program);
-    }
-    for device_mesh in &mut device_model.meshes {
-        model::bind_device_mesh_to_shader_program(device_mesh, &program);
-    }
-}
-
-pub fn unbind_shader_program_from_pass(
-    device_model: &mut model::DeviceModel,
-    techniques: &mut HashMap<technique::Techniques, technique::Technique>,
-    program: &shader::ShaderProgram,
-) {
-    for device_material in &mut device_model.materials {
-        model::unbind_shader_program_from_material(device_material, &program);
-    }
-    for (_, technique) in techniques.iter_mut() {
-        technique::unbind_shader_program_from_technique(technique, &program);
-    }
-}
-
 pub fn create_render_pass(desc: PassDescriptor) -> Result<Pass, String> {
     let host_program = loader::load_host_shader_program(&desc.program);
     if let Result::Err(msg) = host_program {
@@ -120,8 +92,60 @@ pub fn create_render_pass(desc: PassDescriptor) -> Result<Pass, String> {
 pub fn delete_render_pass(pass: &mut Pass) {
     shader::delete_shader_program(&mut pass.program);
     delete_pass_attachments(&mut pass.attachments);
-    unsafe { gl::DeleteFramebuffers(1, pass.fbo as *const u32) };
+    unsafe { gl::DeleteFramebuffers(1, &pass.fbo as *const u32) };
     pass.dependencies.clear();
+}
+
+pub fn bind_device_model_to_render_pass(device_model: &mut model::DeviceModel, pass: &Pass) {
+    for device_mesh in &mut device_model.meshes {
+        model::bind_device_mesh_to_shader_program(device_mesh, &pass.program);
+    }
+    for device_material in &mut device_model.materials {
+        model::bind_shader_program_to_material(device_material, &pass.program);
+    }
+}
+
+pub fn unbind_device_model_from_render_pass(device_model: &mut model::DeviceModel, pass: &Pass) {
+    for device_material in &mut device_model.materials {
+        model::unbind_shader_program_from_material(device_material, &pass.program);
+    }
+}
+
+pub fn resize_render_pass(pass: &mut Pass, width: u32, height: u32) {
+    if width > 0 && height > 0 && (width != pass.width || height != pass.height) {
+        let attachment_descriptors: Vec<PassAttachmentDescriptor> = pass
+            .attachments
+            .iter()
+            .map(|attachment| {
+                let mut desc = attachment.desc.clone();
+
+                if desc.width == pass.width && desc.height == pass.height {
+                    desc.width = width;
+                    desc.height = height;
+                } else {
+                    log::log_warning(
+                        "Failed to resize custom size frame buffer attachment!".to_string(),
+                    );
+                }
+
+                return desc;
+            })
+            .collect();
+
+        let attachments = create_pass_attachments(&attachment_descriptors);
+        let fbo = create_framebuffer_object(&attachments);
+        if let Result::Ok(fbo) = fbo {
+            unsafe { gl::DeleteFramebuffers(1, &pass.fbo as *const u32) };
+            delete_pass_attachments(&mut pass.attachments);
+
+            pass.attachments = attachments;
+            pass.fbo = fbo;
+            pass.width = width;
+            pass.height = height;
+        } else {
+            log::log_error("Failed to resize pass".to_string());
+        }
+    }
 }
 
 pub fn execute_render_pass(
@@ -322,7 +346,7 @@ fn create_pass_attachments(descriptors: &Vec<PassAttachmentDescriptor>) -> Vec<P
 
 fn delete_pass_attachments(attachments: &mut Vec<PassAttachment>) {
     for attachment in attachments.iter() {
-        unsafe { gl::DeleteTextures(1, attachment.texture.handle as *const u32) };
+        unsafe { gl::DeleteTextures(1, &attachment.texture.handle as *const u32) };
     }
     attachments.clear();
 }

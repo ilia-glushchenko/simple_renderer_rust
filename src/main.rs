@@ -165,14 +165,15 @@ fn main_loop(window: &mut app::Window) {
     let mut device_model = load_device_model();
     let transforms = vec![math::identity_mat4x4(); device_model.meshes.len()];
     let mut camera = camera::create_default_camera(window.width, window.height);
-    let mut techniques: HashMap<technique::Techniques, technique::Technique> = HashMap::new();
+    let mut techniques = technique::TechniqueMap::new();
     techniques.insert(
         technique::Techniques::MVP,
         create_mvp_technique(&camera, &transforms),
     );
 
     let mut lighting_pass = create_linghting_pass(window).unwrap();
-    pass::bind_shader_program_to_pass(&mut device_model, &mut techniques, &lighting_pass.program);
+    technique::bind_technique_to_render_pass(&mut techniques, &lighting_pass);
+    pass::bind_device_model_to_render_pass(&mut device_model, &lighting_pass);
 
     while !window.handle.should_close() {
         input::update_input(window, &mut input_data);
@@ -184,17 +185,15 @@ fn main_loop(window: &mut app::Window) {
             techniques.get_mut(&technique::Techniques::MVP).unwrap(),
             &camera,
         );
+        pass::resize_render_pass(&mut lighting_pass, window.width, window.height);
         pass::execute_render_pass(&lighting_pass, &techniques, &device_model);
         pass::blit_framebuffer_to_backbuffer(&lighting_pass, window);
 
         window.handle.swap_buffers();
     }
 
-    pass::unbind_shader_program_from_pass(
-        &mut device_model,
-        &mut techniques,
-        &lighting_pass.program,
-    );
+    pass::unbind_device_model_from_render_pass(&mut device_model, &lighting_pass);
+    technique::unbind_technique_from_render_pass(&mut techniques, &lighting_pass);
     pass::delete_render_pass(&mut lighting_pass);
 }
 

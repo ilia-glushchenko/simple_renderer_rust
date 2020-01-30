@@ -2,9 +2,14 @@ extern crate gl;
 use crate::log;
 use crate::math;
 use crate::model;
+use crate::pass;
 use crate::shader;
+use crate::technique;
+use std::collections::HashMap;
 use std::string::String;
 use std::vec::Vec;
+
+pub type TechniqueMap = HashMap<Techniques, Technique>;
 
 #[derive(PartialEq)]
 pub struct UniformProgramLocation {
@@ -39,43 +44,19 @@ pub enum Techniques {
 
 impl Eq for Techniques {}
 
-//ToDo: Check if all ShaderProgram dependencies are satisfied
-pub fn bind_shader_program_to_technique(
-    technique: &mut Technique,
-    program: &shader::ShaderProgram,
-) {
-    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_frame_uniforms.vec1f);
-    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_frame_uniforms.vec1u);
-    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_frame_uniforms.vec2f);
-    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_frame_uniforms.vec3f);
-    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_frame_uniforms.mat4x4f);
-
-    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_model_uniforms.vec1f);
-    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_model_uniforms.vec1u);
-    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_model_uniforms.vec2f);
-    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_model_uniforms.vec3f);
-    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_model_uniforms.mat4x4f);
-
-    bind_texture2d_to_shader_program(program, &mut technique.textures_2d);
+pub fn bind_technique_to_render_pass(techniques: &mut technique::TechniqueMap, pass: &pass::Pass) {
+    for (_, technique) in techniques.iter_mut() {
+        technique::bind_shader_program_to_technique(technique, &pass.program);
+    }
 }
 
-pub fn unbind_shader_program_from_technique(
-    technique: &mut Technique,
-    program: &shader::ShaderProgram,
+pub fn unbind_technique_from_render_pass(
+    techniques: &mut technique::TechniqueMap,
+    pass: &pass::Pass,
 ) {
-    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_frame_uniforms.vec1f);
-    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_frame_uniforms.vec1u);
-    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_frame_uniforms.vec2f);
-    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_frame_uniforms.vec3f);
-    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_frame_uniforms.mat4x4f);
-
-    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_model_uniforms.vec1f);
-    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_model_uniforms.vec1u);
-    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_model_uniforms.vec2f);
-    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_model_uniforms.vec3f);
-    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_model_uniforms.mat4x4f);
-
-    unbind_texture2d_from_shader_program(program, &mut technique.textures_2d);
+    for (_, technique) in techniques.iter_mut() {
+        technique::unbind_shader_program_from_technique(technique, &pass.program);
+    }
 }
 
 pub fn update_per_frame_uniforms(program: &shader::ShaderProgram, uniforms: &Uniforms) {
@@ -246,6 +227,42 @@ pub fn update_per_model_uniform(
             }
         }
     }
+}
+
+//ToDo: Check if all ShaderProgram dependencies are satisfied
+fn bind_shader_program_to_technique(technique: &mut Technique, program: &shader::ShaderProgram) {
+    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_frame_uniforms.vec1f);
+    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_frame_uniforms.vec1u);
+    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_frame_uniforms.vec2f);
+    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_frame_uniforms.vec3f);
+    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_frame_uniforms.mat4x4f);
+
+    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_model_uniforms.vec1f);
+    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_model_uniforms.vec1u);
+    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_model_uniforms.vec2f);
+    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_model_uniforms.vec3f);
+    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_model_uniforms.mat4x4f);
+
+    bind_texture2d_to_shader_program(program, &mut technique.textures_2d);
+}
+
+fn unbind_shader_program_from_technique(
+    technique: &mut Technique,
+    program: &shader::ShaderProgram,
+) {
+    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_frame_uniforms.vec1f);
+    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_frame_uniforms.vec1u);
+    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_frame_uniforms.vec2f);
+    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_frame_uniforms.vec3f);
+    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_frame_uniforms.mat4x4f);
+
+    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_model_uniforms.vec1f);
+    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_model_uniforms.vec1u);
+    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_model_uniforms.vec2f);
+    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_model_uniforms.vec3f);
+    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_model_uniforms.mat4x4f);
+
+    unbind_texture2d_from_shader_program(program, &mut technique.textures_2d);
 }
 
 fn unbind_scalar_uniforms_from_shader_program<T>(

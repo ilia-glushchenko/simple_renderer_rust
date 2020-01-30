@@ -150,49 +150,62 @@ pub fn bind_shader_program_to_material(
     material: &mut DeviceMaterial,
     program: &shader::ShaderProgram,
 ) {
-    bind_shader_program_to_texture(program, &mut material.albedo_texture);
-    bind_shader_program_to_texture(program, &mut material.normal_texture);
-    bind_shader_program_to_texture(program, &mut material.bump_texture);
-    bind_shader_program_to_texture(program, &mut material.metallic_texture);
-    bind_shader_program_to_texture(program, &mut material.roughness_texture);
+    if let Some(sampler2d) = &mut material.albedo_texture {
+        bind_shader_program_to_texture(program, sampler2d);
+    }
+    if let Some(sampler2d) = &mut material.normal_texture {
+        bind_shader_program_to_texture(program, sampler2d);
+    }
+    if let Some(sampler2d) = &mut material.bump_texture {
+        bind_shader_program_to_texture(program, sampler2d);
+    }
+    if let Some(sampler2d) = &mut material.metallic_texture {
+        bind_shader_program_to_texture(program, sampler2d);
+    }
+    if let Some(sampler2d) = &mut material.roughness_texture {
+        bind_shader_program_to_texture(program, sampler2d);
+    }
 }
 
 pub fn unbind_shader_program_from_material(
     material: &mut DeviceMaterial,
     program: &shader::ShaderProgram,
 ) {
-    unbind_shader_program_from_texture(program, &mut material.albedo_texture);
-    unbind_shader_program_from_texture(program, &mut material.normal_texture);
-    unbind_shader_program_from_texture(program, &mut material.bump_texture);
-    unbind_shader_program_from_texture(program, &mut material.metallic_texture);
-    unbind_shader_program_from_texture(program, &mut material.roughness_texture);
-}
-
-fn bind_shader_program_to_texture(
-    program: &shader::ShaderProgram,
-    sampler2d: &mut Option<Sampler2d>,
-) {
-    if let Some(sampler2d) = sampler2d {
-        if let Some(program_texture) = program
-            .sampler_2d
-            .iter()
-            .find(|x| x.name == sampler2d.texture.name)
-        {
-            sampler2d.bindings.push(SamplerProgramBinding {
-                binding: program_texture.binding,
-                program: program.handle,
-            });
-        }
+    if let Some(sampler2d) = &mut material.albedo_texture {
+        unbind_shader_program_from_texture(program, sampler2d);
+    }
+    if let Some(sampler2d) = &mut material.normal_texture {
+        unbind_shader_program_from_texture(program, sampler2d);
+    }
+    if let Some(sampler2d) = &mut material.bump_texture {
+        unbind_shader_program_from_texture(program, sampler2d);
+    }
+    if let Some(sampler2d) = &mut material.metallic_texture {
+        unbind_shader_program_from_texture(program, sampler2d);
+    }
+    if let Some(sampler2d) = &mut material.roughness_texture {
+        unbind_shader_program_from_texture(program, sampler2d);
     }
 }
 
-fn unbind_shader_program_from_texture(
-    program: &shader::ShaderProgram,
-    sampler2d: &mut Option<Sampler2d>,
-) {
-    if let Some(sampler2d) = sampler2d {
-        sampler2d.bindings.retain(|b| b.program == program.handle);
+pub fn bind_shader_program_to_texture(program: &shader::ShaderProgram, sampler2d: &mut Sampler2d) {
+    if let Some(program_texture) = program
+        .sampler_2d
+        .iter()
+        .find(|x| x.name == sampler2d.texture.name)
+    {
+        sampler2d.bindings.push(SamplerProgramBinding {
+            binding: program_texture.binding,
+            program: program.handle,
+        });
     }
+}
+
+pub fn unbind_shader_program_from_texture(
+    program: &shader::ShaderProgram,
+    sampler2d: &mut Sampler2d,
+) {
+    sampler2d.bindings.retain(|b| b.program == program.handle);
 }
 
 #[allow(clippy::ptr_arg)]

@@ -43,9 +43,17 @@ pub fn update_input(window: &mut app::Window, input_data: &mut Data) {
 
 pub fn update_window_size(window: &mut app::Window) {
     let (width, height) = window.handle.get_framebuffer_size();
+    let width = width as u32;
+    let height = height as u32;
+
     if width > 0 && height > 0 {
-        window.width = width as u32;
-        window.height = height as u32;
+        if window.width != width || window.height != height {
+            window.width = width;
+            window.height = height;
+            window.resized = true;
+        } else {
+            window.resized = false;
+        }
     }
 }
 

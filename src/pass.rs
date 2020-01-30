@@ -11,27 +11,38 @@ use std::collections::HashMap;
 use std::ptr::null;
 
 #[derive(Copy, Clone)]
-pub enum PassAttachments {
+pub enum PassAttachmentType {
     Color(math::Vec4f),
     Depth(f32, gl::types::GLenum),
 }
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
+pub struct RemotePassAttachmentSource {
+    pub pipeline_index: usize,
+    pub attachment_index: usize,
+    pub device_texture: texture::DeviceTexture,
+}
+
+#[derive(Clone)]
+pub enum PassAttachmentSource {
+    Local,
+    Remote(RemotePassAttachmentSource),
+}
+
+#[derive(Clone)]
 pub struct PassAttachmentDescriptor {
-    pub flavor: PassAttachments,
+    pub flavor: PassAttachmentType,
+    pub source: PassAttachmentSource,
     pub write: bool,
     pub clear: bool,
     pub width: u32,
     pub height: u32,
 }
 
+#[derive(Clone)]
 pub struct PassAttachment {
     pub texture: texture::DeviceTexture,
     pub desc: PassAttachmentDescriptor,
-}
-
-pub struct PassDependency {
-    pub texture: texture::DeviceTexture,
 }
 
 pub struct PassDescriptor {
@@ -40,25 +51,27 @@ pub struct PassDescriptor {
     pub techniques: Vec<technique::Techniques>,
 
     pub attachments: Vec<PassAttachmentDescriptor>,
+    pub dependencies: Vec<model::Sampler2d>,
 
     pub width: u32,
     pub height: u32,
 }
 
+#[derive(Clone)]
 pub struct Pass {
     pub name: String,
     pub program: shader::ShaderProgram,
     pub techniques: Vec<technique::Techniques>,
 
     pub attachments: Vec<PassAttachment>,
-    pub dependencies: Vec<PassDependency>,
+    pub dependencies: Vec<model::Sampler2d>,
 
     pub fbo: u32,
     pub width: u32,
     pub height: u32,
 }
 
-pub fn create_render_pass(desc: PassDescriptor) -> Result<Pass, String> {
+pub fn create_render_pass(mut desc: PassDescriptor) -> Result<Pass, String> {
     let host_program = loader::load_host_shader_program(&desc.program);
     if let Result::Err(msg) = host_program {
         return Result::Err(msg);
@@ -77,12 +90,16 @@ pub fn create_render_pass(desc: PassDescriptor) -> Result<Pass, String> {
         return Result::Err(msg);
     }
 
+    for dependency in &mut desc.dependencies {
+        model::bind_shader_program_to_texture(&device_program, dependency);
+    }
+
     Result::Ok(Pass {
         name: desc.name,
         program: device_program,
         techniques: desc.techniques,
         attachments,
-        dependencies: Vec::new(),
+        dependencies: desc.dependencies,
         fbo: framebuffer_object.unwrap(),
         width: desc.width,
         height: desc.height,
@@ -108,6 +125,18 @@ pub fn bind_device_model_to_render_pass(device_model: &mut model::DeviceModel, p
 pub fn unbind_device_model_from_render_pass(device_model: &mut model::DeviceModel, pass: &Pass) {
     for device_material in &mut device_model.materials {
         model::unbind_shader_program_from_material(device_material, &pass.program);
+    }
+}
+
+pub fn bind_technique_to_render_pass(techniques: &mut technique::TechniqueMap, pass: &Pass) {
+    for (_, technique) in techniques.iter_mut() {
+        technique::bind_shader_program_to_technique(technique, &pass.program);
+    }
+}
+
+pub fn unbind_technique_from_render_pass(techniques: &mut technique::TechniqueMap, pass: &Pass) {
+    for (_, technique) in techniques.iter_mut() {
+        technique::unbind_shader_program_from_technique(technique, &pass.program);
     }
 }
 
@@ -142,8 +171,10 @@ pub fn resize_render_pass(pass: &mut Pass, width: u32, height: u32) {
             pass.fbo = fbo;
             pass.width = width;
             pass.height = height;
-        } else {
-            log::log_error("Failed to resize pass".to_string());
+        }
+
+        if let Err(msg) = fbo {
+            log::log_error(format!("Failed to resize pass {0}", msg));
         }
     }
 }
@@ -157,7 +188,7 @@ pub fn execute_render_pass(
 
     for attachment in &pass.attachments {
         match attachment.desc.flavor {
-            PassAttachments::Color(clear_color) => unsafe {
+            PassAttachmentType::Color(clear_color) => unsafe {
                 gl::ClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
 
                 if attachment.desc.write {
@@ -170,7 +201,7 @@ pub fn execute_render_pass(
                     clear_mask = clear_mask | gl::COLOR_BUFFER_BIT;
                 }
             },
-            PassAttachments::Depth(clear_depth, depth_func) => unsafe {
+            PassAttachmentType::Depth(clear_depth, depth_func) => unsafe {
                 gl::Enable(gl::DEPTH_TEST);
                 gl::ClearDepth(clear_depth as f64);
                 gl::DepthFunc(depth_func);
@@ -204,6 +235,7 @@ pub fn execute_render_pass(
             &pass.program,
             &model.materials[mesh.material_index as usize],
         );
+        bind_dependencies(&pass.program, &pass.dependencies);
 
         for technique in &pass.techniques {
             technique::update_per_frame_uniforms(
@@ -226,6 +258,7 @@ pub fn execute_render_pass(
             );
         }
 
+        unbind_dependencies(&pass.program, &pass.dependencies);
         unbind_material(
             &pass.program,
             &model.materials[mesh.material_index as usize],
@@ -259,39 +292,67 @@ pub fn blit_framebuffer_to_backbuffer(pass: &Pass, window: &app::Window) {
 }
 
 fn bind_material(program: &shader::ShaderProgram, material: &model::DeviceMaterial) {
-    bind_texture(program.handle, &material.albedo_texture);
-    bind_texture(program.handle, &material.normal_texture);
-    bind_texture(program.handle, &material.bump_texture);
-    bind_texture(program.handle, &material.metallic_texture);
-    bind_texture(program.handle, &material.roughness_texture);
+    if let Some(texture) = &material.albedo_texture {
+        bind_texture(program.handle, texture);
+    }
+    if let Some(texture) = &material.normal_texture {
+        bind_texture(program.handle, texture);
+    }
+    if let Some(texture) = &material.bump_texture {
+        bind_texture(program.handle, texture);
+    }
+    if let Some(texture) = &material.metallic_texture {
+        bind_texture(program.handle, texture);
+    }
+    if let Some(texture) = &material.roughness_texture {
+        bind_texture(program.handle, texture);
+    }
 }
 
 fn unbind_material(program: &shader::ShaderProgram, material: &model::DeviceMaterial) {
-    unbind_texture(program.handle, &material.albedo_texture);
-    unbind_texture(program.handle, &material.normal_texture);
-    unbind_texture(program.handle, &material.bump_texture);
-    unbind_texture(program.handle, &material.metallic_texture);
-    unbind_texture(program.handle, &material.roughness_texture);
+    if let Some(texture) = &material.albedo_texture {
+        unbind_texture(program.handle, texture);
+    }
+    if let Some(texture) = &material.normal_texture {
+        unbind_texture(program.handle, texture);
+    }
+    if let Some(texture) = &material.bump_texture {
+        unbind_texture(program.handle, texture);
+    }
+    if let Some(texture) = &material.metallic_texture {
+        unbind_texture(program.handle, texture);
+    }
+    if let Some(texture) = &material.roughness_texture {
+        unbind_texture(program.handle, texture);
+    }
 }
 
-fn bind_texture(program: u32, texture: &Option<model::Sampler2d>) {
-    if let Some(texture) = &texture {
-        if let Some(binding) = texture.bindings.iter().find(|x| x.program == program) {
-            unsafe {
-                gl::ActiveTexture(gl::TEXTURE0 as u32 + binding.binding);
-                gl::BindTexture(gl::TEXTURE_2D, texture.texture.handle);
-            }
+fn bind_dependencies(program: &shader::ShaderProgram, dependencies: &Vec<model::Sampler2d>) {
+    for dep in dependencies {
+        bind_texture(program.handle, dep);
+    }
+}
+
+fn unbind_dependencies(program: &shader::ShaderProgram, dependencies: &Vec<model::Sampler2d>) {
+    for dep in dependencies {
+        unbind_texture(program.handle, dep);
+    }
+}
+
+fn bind_texture(program: u32, texture: &model::Sampler2d) {
+    if let Some(binding) = texture.bindings.iter().find(|x| x.program == program) {
+        unsafe {
+            gl::ActiveTexture(gl::TEXTURE0 as u32 + binding.binding);
+            gl::BindTexture(gl::TEXTURE_2D, texture.texture.handle);
         }
     }
 }
 
-fn unbind_texture(program: u32, texture: &Option<model::Sampler2d>) {
-    if let Some(texture) = &texture {
-        if let Some(binding) = texture.bindings.iter().find(|x| x.program == program) {
-            unsafe {
-                gl::ActiveTexture(gl::TEXTURE0 as u32 + binding.binding);
-                gl::BindTexture(gl::TEXTURE_2D, 0);
-            }
+fn unbind_texture(program: u32, texture: &model::Sampler2d) {
+    if let Some(binding) = texture.bindings.iter().find(|x| x.program == program) {
+        unsafe {
+            gl::ActiveTexture(gl::TEXTURE0 as u32 + binding.binding);
+            gl::BindTexture(gl::TEXTURE_2D, 0);
         }
     }
 }
@@ -300,45 +361,54 @@ fn create_pass_attachments(descriptors: &Vec<PassAttachmentDescriptor>) -> Vec<P
     let mut attachments: Vec<PassAttachment> = Vec::new();
 
     for desc in descriptors {
-        match desc.flavor {
-            PassAttachments::Color(_) => {
-                let device_texture_descriptor =
-                    texture::create_color_attachment_device_texture_descriptor();
-                let attachment_host_texture = texture::create_empty_host_texture(
-                    "color_attachment".to_string(),
-                    desc.width as usize,
-                    desc.height as usize,
-                    texture::convert_gl_format_to_image_depth(device_texture_descriptor.format),
-                );
-                let attachment_device_texture = texture::create_device_texture(
-                    attachment_host_texture.name.clone(),
-                    &attachment_host_texture,
-                    &device_texture_descriptor,
-                );
-                attachments.push(PassAttachment {
-                    texture: attachment_device_texture,
-                    desc: *desc,
-                })
-            }
-            PassAttachments::Depth(_, _) => {
-                let device_texture_descriptor = texture::create_depth_device_texture_descriptor();
-                let attachment_host_texture = texture::create_empty_host_texture(
-                    "depth attachment".to_string(),
-                    desc.width as usize,
-                    desc.height as usize,
-                    texture::convert_gl_format_to_image_depth(device_texture_descriptor.format),
-                );
-                let attachment_device_texture = texture::create_device_texture(
-                    attachment_host_texture.name.clone(),
-                    &attachment_host_texture,
-                    &device_texture_descriptor,
-                );
-                attachments.push(PassAttachment {
-                    texture: attachment_device_texture,
-                    desc: *desc,
-                })
-            }
-        }
+        let attachment = match &desc.source {
+            PassAttachmentSource::Local => match &desc.flavor {
+                PassAttachmentType::Color(_) => {
+                    let device_texture_descriptor =
+                        texture::create_color_attachment_device_texture_descriptor();
+                    let attachment_host_texture = texture::create_empty_host_texture(
+                        "color_attachment".to_string(),
+                        desc.width as usize,
+                        desc.height as usize,
+                        texture::convert_gl_format_to_image_depth(device_texture_descriptor.format),
+                    );
+                    let attachment_device_texture = texture::create_device_texture(
+                        attachment_host_texture.name.clone(),
+                        &attachment_host_texture,
+                        &device_texture_descriptor,
+                    );
+                    PassAttachment {
+                        texture: attachment_device_texture,
+                        desc: desc.clone(),
+                    }
+                }
+                PassAttachmentType::Depth(_, _) => {
+                    let device_texture_descriptor =
+                        texture::create_depth_device_texture_descriptor();
+                    let attachment_host_texture = texture::create_empty_host_texture(
+                        "depth attachment".to_string(),
+                        desc.width as usize,
+                        desc.height as usize,
+                        texture::convert_gl_format_to_image_depth(device_texture_descriptor.format),
+                    );
+                    let attachment_device_texture = texture::create_device_texture(
+                        attachment_host_texture.name.clone(),
+                        &attachment_host_texture,
+                        &device_texture_descriptor,
+                    );
+                    PassAttachment {
+                        texture: attachment_device_texture,
+                        desc: desc.clone(),
+                    }
+                }
+            },
+            PassAttachmentSource::Remote(source) => PassAttachment {
+                texture: source.device_texture.clone(),
+                desc: desc.clone(),
+            },
+        };
+
+        attachments.push(attachment);
     }
 
     attachments
@@ -346,7 +416,9 @@ fn create_pass_attachments(descriptors: &Vec<PassAttachmentDescriptor>) -> Vec<P
 
 fn delete_pass_attachments(attachments: &mut Vec<PassAttachment>) {
     for attachment in attachments.iter() {
-        unsafe { gl::DeleteTextures(1, &attachment.texture.handle as *const u32) };
+        if let PassAttachmentSource::Local = attachment.desc.source {
+            unsafe { gl::DeleteTextures(1, &attachment.texture.handle as *const u32) };
+        }
     }
     attachments.clear();
 }
@@ -372,8 +444,13 @@ fn create_framebuffer_object(attachments: &Vec<PassAttachment>) -> Result<u32, S
         unsafe { gl::ActiveTexture(gl::TEXTURE0) };
         unsafe { gl::BindTexture(gl::TEXTURE_2D, attachment.texture.handle) };
 
+        let attachment_texture_handle = match &attachment.desc.source {
+            PassAttachmentSource::Local => attachment.texture.handle,
+            PassAttachmentSource::Remote(source) => source.device_texture.handle,
+        };
+
         match attachment.desc.flavor {
-            PassAttachments::Color(_) => {
+            PassAttachmentType::Color(_) => {
                 let attachment_index =
                     (gl::COLOR_ATTACHMENT0 as u32 + color_attachment_count) as gl::types::GLenum;
 
@@ -382,7 +459,7 @@ fn create_framebuffer_object(attachments: &Vec<PassAttachment>) -> Result<u32, S
                         gl::FRAMEBUFFER,
                         attachment_index,
                         gl::TEXTURE_2D,
-                        attachment.texture.handle,
+                        attachment_texture_handle,
                         0,
                     );
                 }
@@ -390,7 +467,7 @@ fn create_framebuffer_object(attachments: &Vec<PassAttachment>) -> Result<u32, S
 
                 color_attachment_count += 1;
             }
-            PassAttachments::Depth(_, _) => {
+            PassAttachmentType::Depth(_, _) => {
                 assert!(
                     depth_attachment_count == 0,
                     "There can only be 1 depth attachment"
@@ -400,7 +477,7 @@ fn create_framebuffer_object(attachments: &Vec<PassAttachment>) -> Result<u32, S
                         gl::FRAMEBUFFER,
                         gl::DEPTH_ATTACHMENT,
                         gl::TEXTURE_2D,
-                        attachment.texture.handle,
+                        attachment_texture_handle,
                         0,
                     );
                 }

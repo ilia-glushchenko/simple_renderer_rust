@@ -12,16 +12,10 @@ mod log;
 mod math;
 mod model;
 mod pass;
+mod pipeline;
 mod shader;
 mod technique;
 mod texture;
-
-fn load_device_model() -> model::DeviceModel {
-    let host_model = loader::load_host_model_from_obj(Path::new("data/models/sponza/sponza.obj"));
-    let device_model = model::create_device_model(&host_model);
-
-    device_model
-}
 
 fn create_mvp_technique(
     camera: &camera::Camera,
@@ -116,43 +110,6 @@ fn update_mvp_technique(tech: &mut technique::Technique, camera: &camera::Camera
     *camera_pos_vec = camera.pos;
 }
 
-fn create_linghting_pass(window: &app::Window) -> Result<pass::Pass, String> {
-    let lighting_pass_descriptor = pass::PassDescriptor {
-        name: "lighting".to_string(),
-        program: shader::HostShaderProgramDescriptor {
-            name: "lighting".to_string(),
-            vert_shader_file_path: "shaders/pass_through.vert".to_string(),
-            frag_shader_file_path: "shaders/pass_through.frag".to_string(),
-        },
-        techniques: vec![technique::Techniques::MVP],
-        attachments: vec![
-            pass::PassAttachmentDescriptor {
-                flavor: pass::PassAttachments::Depth(1., gl::LESS),
-                clear: true,
-                write: true,
-                width: window.width,
-                height: window.height,
-            },
-            pass::PassAttachmentDescriptor {
-                flavor: pass::PassAttachments::Color(math::Vec4f {
-                    x: 1.,
-                    y: 1.,
-                    z: 1.,
-                    w: 1.,
-                }),
-                clear: true,
-                write: true,
-                width: window.width,
-                height: window.height,
-            },
-        ],
-        width: window.width,
-        height: window.height,
-    };
-
-    pass::create_render_pass(lighting_pass_descriptor)
-}
-
 fn main_loop(window: &mut app::Window) {
     let mut input_data: input::Data = input::Data {
         keys: HashMap::new(),
@@ -162,7 +119,8 @@ fn main_loop(window: &mut app::Window) {
         },
     };
 
-    let mut device_model = load_device_model();
+    let mut device_model =
+        loader::load_device_model_from_obj(Path::new("data/models/sponza/sponza.obj"));
     let transforms = vec![math::identity_mat4x4(); device_model.meshes.len()];
     let mut camera = camera::create_default_camera(window.width, window.height);
     let mut techniques = technique::TechniqueMap::new();
@@ -171,9 +129,11 @@ fn main_loop(window: &mut app::Window) {
         create_mvp_technique(&camera, &transforms),
     );
 
-    let mut lighting_pass = create_linghting_pass(window).unwrap();
-    technique::bind_technique_to_render_pass(&mut techniques, &lighting_pass);
-    pass::bind_device_model_to_render_pass(&mut device_model, &lighting_pass);
+    let mut pipeline = pipeline::create_render_pipeline(&mut techniques, window);
+    if let Ok(ref mut pipeline) = &mut pipeline {
+        pass::bind_device_model_to_render_pass(&mut device_model, &pipeline[0]);
+        pass::bind_device_model_to_render_pass(&mut device_model, &pipeline[1]);
+    }
 
     while !window.handle.should_close() {
         input::update_input(window, &mut input_data);
@@ -185,16 +145,25 @@ fn main_loop(window: &mut app::Window) {
             techniques.get_mut(&technique::Techniques::MVP).unwrap(),
             &camera,
         );
-        pass::resize_render_pass(&mut lighting_pass, window.width, window.height);
-        pass::execute_render_pass(&lighting_pass, &techniques, &device_model);
-        pass::blit_framebuffer_to_backbuffer(&lighting_pass, window);
+
+        if let Ok(ref mut pipeline) = &mut pipeline {
+            if window.resized {
+                pipeline::resize_render_pipeline(window, pipeline);
+            }
+
+            pass::execute_render_pass(&pipeline[0], &techniques, &device_model);
+            pass::execute_render_pass(&pipeline[1], &techniques, &device_model);
+            pass::blit_framebuffer_to_backbuffer(&pipeline.last().unwrap(), window);
+        }
 
         window.handle.swap_buffers();
     }
 
-    pass::unbind_device_model_from_render_pass(&mut device_model, &lighting_pass);
-    technique::unbind_technique_from_render_pass(&mut techniques, &lighting_pass);
-    pass::delete_render_pass(&mut lighting_pass);
+    if let Ok(ref mut pipeline) = pipeline {
+        pass::unbind_device_model_from_render_pass(&mut device_model, &pipeline[0]);
+        pass::unbind_device_model_from_render_pass(&mut device_model, &pipeline[1]);
+        pipeline::delete_render_pipeline(&mut techniques, pipeline);
+    }
 }
 
 fn main() {

@@ -14,6 +14,7 @@ pub struct Window {
     pub events: std::sync::mpsc::Receiver<(f64, glfw::WindowEvent)>,
     pub width: u32,
     pub height: u32,
+    pub resized: bool,
 }
 
 pub fn initialize_application() -> Window {
@@ -48,6 +49,7 @@ pub fn initialize_application() -> Window {
         events,
         width,
         height,
+        resized: false,
     }
 }
 

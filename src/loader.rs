@@ -49,7 +49,14 @@ pub fn load_host_shader_program(
     })
 }
 
-pub fn load_host_model_from_obj(file_path: &Path) -> model::HostModel {
+pub fn load_device_model_from_obj(path: &Path) -> model::DeviceModel {
+    let host_model = load_host_model_from_obj(path);
+    let device_model = model::create_device_model(&host_model);
+
+    device_model
+}
+
+fn load_host_model_from_obj(file_path: &Path) -> model::HostModel {
     assert!(
         file_path.extension().unwrap() == "obj",
         "This function shall only load OBJ files.",
@@ -70,12 +77,6 @@ pub fn load_host_model_from_obj(file_path: &Path) -> model::HostModel {
     for raw_model in &raw_models {
         meshes.push(create_host_mesh_from_tobj_mesh(raw_model));
     }
-
-    // {
-    //     meshes.first_mut().unwrap().material_index = 0;
-    //     materials = vec![materials[meshes.first().unwrap().material_index as usize].clone()];
-    //     meshes = vec![meshes.first().unwrap().clone()];
-    // }
 
     model::HostModel { meshes, materials }
 }

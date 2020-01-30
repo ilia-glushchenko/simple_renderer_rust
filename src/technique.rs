@@ -2,9 +2,7 @@ extern crate gl;
 use crate::log;
 use crate::math;
 use crate::model;
-use crate::pass;
 use crate::shader;
-use crate::technique;
 use std::collections::HashMap;
 use std::string::String;
 use std::vec::Vec;
@@ -37,27 +35,12 @@ pub struct Technique {
     pub textures_2d: Vec<model::Sampler2d>,
 }
 
-#[derive(Hash, PartialEq)]
+#[derive(Hash, PartialEq, Clone)]
 pub enum Techniques {
     MVP,
 }
 
 impl Eq for Techniques {}
-
-pub fn bind_technique_to_render_pass(techniques: &mut technique::TechniqueMap, pass: &pass::Pass) {
-    for (_, technique) in techniques.iter_mut() {
-        technique::bind_shader_program_to_technique(technique, &pass.program);
-    }
-}
-
-pub fn unbind_technique_from_render_pass(
-    techniques: &mut technique::TechniqueMap,
-    pass: &pass::Pass,
-) {
-    for (_, technique) in techniques.iter_mut() {
-        technique::unbind_shader_program_from_technique(technique, &pass.program);
-    }
-}
 
 pub fn update_per_frame_uniforms(program: &shader::ShaderProgram, uniforms: &Uniforms) {
     for uniform in &uniforms.vec1f {
@@ -230,7 +213,10 @@ pub fn update_per_model_uniform(
 }
 
 //ToDo: Check if all ShaderProgram dependencies are satisfied
-fn bind_shader_program_to_technique(technique: &mut Technique, program: &shader::ShaderProgram) {
+pub fn bind_shader_program_to_technique(
+    technique: &mut Technique,
+    program: &shader::ShaderProgram,
+) {
     bind_scalar_uniforms_to_shader_program(program, &mut technique.per_frame_uniforms.vec1f);
     bind_scalar_uniforms_to_shader_program(program, &mut technique.per_frame_uniforms.vec1u);
     bind_scalar_uniforms_to_shader_program(program, &mut technique.per_frame_uniforms.vec2f);
@@ -246,7 +232,7 @@ fn bind_shader_program_to_technique(technique: &mut Technique, program: &shader:
     bind_texture2d_to_shader_program(program, &mut technique.textures_2d);
 }
 
-fn unbind_shader_program_from_technique(
+pub fn unbind_shader_program_from_technique(
     technique: &mut Technique,
     program: &shader::ShaderProgram,
 ) {
@@ -302,8 +288,8 @@ fn bind_scalar_uniforms_to_shader_program<T>(
             });
         } else {
             log::log_warning(format!(
-                "Failed to find '{}' uniform location in program '{}'",
-                uniform.name, program.handle
+                "Failed to find '{}' uniform location in program id: '{}' name: '{}'",
+                uniform.name, program.handle, program.name
             ));
         }
     }
@@ -337,8 +323,8 @@ fn bind_texture2d_to_shader_program(
             });
         } else {
             log::log_warning(format!(
-                "Failed to find '{}' sampler2d location in program '{}'",
-                texture.texture.name, program.handle
+                "Failed to find '{}' sampler2d location in program id: '{}' name: '{}'",
+                texture.texture.name, program.handle, program.name
             ));
         }
     }

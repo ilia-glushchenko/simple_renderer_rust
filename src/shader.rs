@@ -4,27 +4,32 @@ use std::result::Result;
 use std::string::String;
 use std::vec::Vec;
 
+#[derive(Clone)]
 pub struct ShaderProgramAttribute {
     pub location: u32,
     pub name: String,
 }
 
+#[derive(Clone)]
 pub struct ShaderProgramScalarUniform {
     pub location: u32,
     pub name: String,
 }
 
+#[derive(Clone)]
 pub struct ShaderProgramArrayUniform {
     pub location: u32,
     pub count: u32,
     pub name: String,
 }
 
+#[derive(Clone)]
 pub struct ShaderProgramTexture2d {
     pub binding: u32,
     pub name: String,
 }
 
+#[derive(Clone)]
 pub struct ShaderProgramOutput {
     pub name: String,
     pub format: String,
@@ -43,7 +48,9 @@ pub struct HostShaderProgram {
     pub frag_shader_source: String,
 }
 
+#[derive(Clone)]
 pub struct ShaderProgram {
+    pub name: String,
     pub handle: u32,
     pub vert_shader_handle: u32,
     pub frag_shader_handle: u32,
@@ -98,6 +105,7 @@ pub fn create_shader_program(
     }
 
     Result::Ok(ShaderProgram {
+        name: host_shader_program.descriptor.name.clone(),
         handle,
         vert_shader_handle,
         frag_shader_handle,

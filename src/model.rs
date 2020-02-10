@@ -1,4 +1,5 @@
 use crate::buffer;
+use crate::log;
 use crate::math;
 use crate::shader;
 use crate::texture;
@@ -167,24 +168,21 @@ pub fn bind_shader_program_to_material(
     }
 }
 
-pub fn unbind_shader_program_from_material(
-    material: &mut DeviceMaterial,
-    program: &shader::ShaderProgram,
-) {
+pub fn unbind_shader_program_from_material(material: &mut DeviceMaterial, program_handle: u32) {
     if let Some(sampler2d) = &mut material.albedo_texture {
-        unbind_shader_program_from_texture(program, sampler2d);
+        unbind_shader_program_from_texture(program_handle, sampler2d);
     }
     if let Some(sampler2d) = &mut material.normal_texture {
-        unbind_shader_program_from_texture(program, sampler2d);
+        unbind_shader_program_from_texture(program_handle, sampler2d);
     }
     if let Some(sampler2d) = &mut material.bump_texture {
-        unbind_shader_program_from_texture(program, sampler2d);
+        unbind_shader_program_from_texture(program_handle, sampler2d);
     }
     if let Some(sampler2d) = &mut material.metallic_texture {
-        unbind_shader_program_from_texture(program, sampler2d);
+        unbind_shader_program_from_texture(program_handle, sampler2d);
     }
     if let Some(sampler2d) = &mut material.roughness_texture {
-        unbind_shader_program_from_texture(program, sampler2d);
+        unbind_shader_program_from_texture(program_handle, sampler2d);
     }
 }
 
@@ -198,14 +196,16 @@ pub fn bind_shader_program_to_texture(program: &shader::ShaderProgram, sampler2d
             binding: program_texture.binding,
             program: program.handle,
         });
+    } else {
+        log::log_warning(format!(
+            "Failed to find 2d sampler with name: '{}' in shader program id: '{}' name: '{}'",
+            sampler2d.texture.name, program.handle, program.name
+        ))
     }
 }
 
-pub fn unbind_shader_program_from_texture(
-    program: &shader::ShaderProgram,
-    sampler2d: &mut Sampler2d,
-) {
-    sampler2d.bindings.retain(|b| b.program == program.handle);
+pub fn unbind_shader_program_from_texture(program_handle: u32, sampler2d: &mut Sampler2d) {
+    sampler2d.bindings.retain(|b| b.program == program_handle);
 }
 
 #[allow(clippy::ptr_arg)]

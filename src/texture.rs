@@ -73,7 +73,7 @@ pub fn create_color_attachment_device_texture_descriptor() -> DeviceTextureDescr
         max_anisotropy: 1_f32,
         internal_format: gl::RGBA32F,
         format: gl::RGBA,
-        data_type: gl::UNSIGNED_BYTE,
+        data_type: gl::FLOAT,
         use_mipmaps: false,
     }
 }

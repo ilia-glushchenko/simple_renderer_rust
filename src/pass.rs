@@ -1,6 +1,5 @@
 extern crate gl;
 use crate::app;
-use crate::loader;
 use crate::log;
 use crate::math;
 use crate::model;
@@ -45,6 +44,7 @@ pub struct PassAttachment {
     pub desc: PassAttachmentDescriptor,
 }
 
+#[derive(Clone)]
 pub struct PassDescriptor {
     pub name: String,
     pub program: shader::HostShaderProgramDescriptor,
@@ -62,6 +62,7 @@ pub struct Pass {
     pub name: String,
     pub program: shader::ShaderProgram,
     pub techniques: Vec<technique::Techniques>,
+    pub desc: PassDescriptor,
 
     pub attachments: Vec<PassAttachment>,
     pub dependencies: Vec<model::Sampler2d>,
@@ -72,17 +73,15 @@ pub struct Pass {
 }
 
 pub fn create_render_pass(mut desc: PassDescriptor) -> Result<Pass, String> {
-    let host_program = loader::load_host_shader_program(&desc.program);
-    if let Result::Err(msg) = host_program {
-        return Result::Err(msg);
-    }
-    let host_program = host_program.unwrap();
-
-    let device_program = shader::create_shader_program(&host_program);
-    if let Result::Err(msg) = device_program {
-        return Result::Err(msg);
+    let device_program = shader::create_shader_program(&desc.program);
+    if let Err(msg) = device_program {
+        return Err(msg);
     }
     let device_program = device_program.unwrap();
+
+    for dependency in &mut desc.dependencies {
+        model::bind_shader_program_to_texture(&device_program, dependency);
+    }
 
     let attachments = create_pass_attachments(&desc.attachments);
     let framebuffer_object = create_framebuffer_object(&attachments);
@@ -90,14 +89,11 @@ pub fn create_render_pass(mut desc: PassDescriptor) -> Result<Pass, String> {
         return Result::Err(msg);
     }
 
-    for dependency in &mut desc.dependencies {
-        model::bind_shader_program_to_texture(&device_program, dependency);
-    }
-
     Result::Ok(Pass {
-        name: desc.name,
+        name: desc.name.clone(),
         program: device_program,
-        techniques: desc.techniques,
+        techniques: desc.techniques.clone(),
+        desc: desc.clone(),
         attachments,
         dependencies: desc.dependencies,
         fbo: framebuffer_object.unwrap(),
@@ -122,9 +118,12 @@ pub fn bind_device_model_to_render_pass(device_model: &mut model::DeviceModel, p
     }
 }
 
-pub fn unbind_device_model_from_render_pass(device_model: &mut model::DeviceModel, pass: &Pass) {
+pub fn unbind_device_model_from_render_pass(
+    device_model: &mut model::DeviceModel,
+    pass_program_handle: u32,
+) {
     for device_material in &mut device_model.materials {
-        model::unbind_shader_program_from_material(device_material, &pass.program);
+        model::unbind_shader_program_from_material(device_material, pass_program_handle);
     }
 }
 
@@ -134,9 +133,12 @@ pub fn bind_technique_to_render_pass(techniques: &mut technique::TechniqueMap, p
     }
 }
 
-pub fn unbind_technique_from_render_pass(techniques: &mut technique::TechniqueMap, pass: &Pass) {
+pub fn unbind_technique_from_render_pass(
+    techniques: &mut technique::TechniqueMap,
+    pass_program_handle: u32,
+) {
     for (_, technique) in techniques.iter_mut() {
-        technique::unbind_shader_program_from_technique(technique, &pass.program);
+        technique::unbind_shader_program_from_technique(technique, pass_program_handle);
     }
 }
 
@@ -422,11 +424,6 @@ fn delete_pass_attachments(attachments: &mut Vec<PassAttachment>) {
     }
     attachments.clear();
 }
-
-// fn bind_pass_attachments_to_shader_program() -> Result<(), String>
-// {
-
-// }
 
 fn create_framebuffer_object(attachments: &Vec<PassAttachment>) -> Result<u32, String> {
     let mut handle: u32 = 0;

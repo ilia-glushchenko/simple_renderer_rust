@@ -147,6 +147,33 @@ fn main_loop(window: &mut app::Window) {
         );
 
         if let Ok(ref mut pipeline) = &mut pipeline {
+            if let Some(input::Action::Press) = input_data.keys.get(&input::Key::F5) {
+                let pipeline_program_handles: Vec<u32> =
+                    pipeline.iter().map(|x| x.program.handle).collect();
+
+                if let Err(msg) = pipeline::reload_render_pipeline(pipeline) {
+                    log::log_error(format!("Failed to hot reload pipeline:\n{}", msg));
+                } else {
+                    for pass_program_handle in pipeline_program_handles {
+                        pass::unbind_technique_from_render_pass(
+                            &mut techniques,
+                            pass_program_handle,
+                        );
+                        pass::unbind_device_model_from_render_pass(
+                            &mut device_model,
+                            pass_program_handle,
+                        );
+                    }
+
+                    for pass in pipeline.iter_mut() {
+                        pass::bind_device_model_to_render_pass(&mut device_model, &pass);
+                        pass::bind_technique_to_render_pass(&mut techniques, pass);
+                    }
+
+                    log::log_info("Pipeline hot reloaded".to_string());
+                }
+            }
+
             if window.resized {
                 pipeline::resize_render_pipeline(window, pipeline);
             }
@@ -160,8 +187,8 @@ fn main_loop(window: &mut app::Window) {
     }
 
     if let Ok(ref mut pipeline) = pipeline {
-        pass::unbind_device_model_from_render_pass(&mut device_model, &pipeline[0]);
-        pass::unbind_device_model_from_render_pass(&mut device_model, &pipeline[1]);
+        pass::unbind_device_model_from_render_pass(&mut device_model, pipeline[0].program.handle);
+        pass::unbind_device_model_from_render_pass(&mut device_model, pipeline[1].program.handle);
         pipeline::delete_render_pipeline(&mut techniques, pipeline);
     }
 }

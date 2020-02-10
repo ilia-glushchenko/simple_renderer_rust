@@ -232,31 +232,55 @@ pub fn bind_shader_program_to_technique(
     bind_texture2d_to_shader_program(program, &mut technique.textures_2d);
 }
 
-pub fn unbind_shader_program_from_technique(
-    technique: &mut Technique,
-    program: &shader::ShaderProgram,
-) {
-    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_frame_uniforms.vec1f);
-    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_frame_uniforms.vec1u);
-    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_frame_uniforms.vec2f);
-    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_frame_uniforms.vec3f);
-    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_frame_uniforms.mat4x4f);
+pub fn unbind_shader_program_from_technique(technique: &mut Technique, program_handle: u32) {
+    unbind_scalar_uniforms_from_shader_program(
+        program_handle,
+        &mut technique.per_frame_uniforms.vec1f,
+    );
+    unbind_scalar_uniforms_from_shader_program(
+        program_handle,
+        &mut technique.per_frame_uniforms.vec1u,
+    );
+    unbind_scalar_uniforms_from_shader_program(
+        program_handle,
+        &mut technique.per_frame_uniforms.vec2f,
+    );
+    unbind_scalar_uniforms_from_shader_program(
+        program_handle,
+        &mut technique.per_frame_uniforms.vec3f,
+    );
+    unbind_scalar_uniforms_from_shader_program(
+        program_handle,
+        &mut technique.per_frame_uniforms.mat4x4f,
+    );
 
-    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_model_uniforms.vec1f);
-    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_model_uniforms.vec1u);
-    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_model_uniforms.vec2f);
-    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_model_uniforms.vec3f);
-    unbind_scalar_uniforms_from_shader_program(program, &mut technique.per_model_uniforms.mat4x4f);
+    unbind_scalar_uniforms_from_shader_program(
+        program_handle,
+        &mut technique.per_model_uniforms.vec1f,
+    );
+    unbind_scalar_uniforms_from_shader_program(
+        program_handle,
+        &mut technique.per_model_uniforms.vec1u,
+    );
+    unbind_scalar_uniforms_from_shader_program(
+        program_handle,
+        &mut technique.per_model_uniforms.vec2f,
+    );
+    unbind_scalar_uniforms_from_shader_program(
+        program_handle,
+        &mut technique.per_model_uniforms.vec3f,
+    );
+    unbind_scalar_uniforms_from_shader_program(
+        program_handle,
+        &mut technique.per_model_uniforms.mat4x4f,
+    );
 
-    unbind_texture2d_from_shader_program(program, &mut technique.textures_2d);
+    unbind_texture2d_from_shader_program(program_handle, &mut technique.textures_2d);
 }
 
-fn unbind_scalar_uniforms_from_shader_program<T>(
-    program: &shader::ShaderProgram,
-    uniforms: &mut [Uniform<T>],
-) {
+fn unbind_scalar_uniforms_from_shader_program<T>(program_handle: u32, uniforms: &mut [Uniform<T>]) {
     for uniform in uniforms.iter_mut() {
-        uniform.locations.retain(|l| l.program != program.handle);
+        uniform.locations.retain(|l| l.program != program_handle);
     }
 }
 
@@ -330,11 +354,8 @@ fn bind_texture2d_to_shader_program(
     }
 }
 
-fn unbind_texture2d_from_shader_program(
-    program: &shader::ShaderProgram,
-    textures: &mut [model::Sampler2d],
-) {
+fn unbind_texture2d_from_shader_program(program_handle: u32, textures: &mut [model::Sampler2d]) {
     for texture in textures.iter_mut() {
-        texture.bindings.retain(|b| b.program != program.handle);
+        texture.bindings.retain(|b| b.program != program_handle);
     }
 }

@@ -1,5 +1,6 @@
 use crate::app;
 use crate::math;
+use crate::model;
 use crate::pass;
 use crate::shader;
 use crate::technique;
@@ -89,9 +90,41 @@ pub fn delete_render_pipeline(
     pipeline: &mut Vec<pass::Pass>,
 ) {
     for pass in pipeline.iter_mut() {
-        pass::unbind_technique_from_render_pass(techniques, &pass);
+        pass::unbind_technique_from_render_pass(techniques, pass.program.handle);
         pass::delete_render_pass(pass);
     }
+}
+
+pub fn reload_render_pipeline(pipeline: &mut Vec<pass::Pass>) -> Result<(), String> {
+    let mut new_pipeline_programs: Vec<shader::ShaderProgram> = Vec::new();
+
+    for pass in pipeline.iter_mut() {
+        //First try to load new shader
+        let device_program = shader::create_shader_program(&pass.desc.program);
+        if let Err(msg) = device_program {
+            for program in new_pipeline_programs.iter_mut() {
+                shader::delete_shader_program(program);
+            }
+            return Err(msg);
+        }
+        new_pipeline_programs.push(device_program.unwrap());
+    }
+
+    for (i, pass) in pipeline.iter_mut().enumerate() {
+        //Delete old if success
+        for dependency in &mut pass.desc.dependencies {
+            model::unbind_shader_program_from_texture(pass.program.handle, dependency);
+        }
+        shader::delete_shader_program(&mut pass.program);
+
+        //Assign new
+        pass.program = new_pipeline_programs[i].clone();
+        for dependency in &mut pass.desc.dependencies {
+            model::bind_shader_program_to_texture(&pass.program, dependency);
+        }
+    }
+
+    Ok(())
 }
 
 pub fn resize_render_pipeline(window: &app::Window, pipeline: &mut Vec<pass::Pass>) {

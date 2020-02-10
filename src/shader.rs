@@ -1,3 +1,4 @@
+use crate::loader;
 use crate::log;
 use std::ffi::CString;
 use std::result::Result;
@@ -62,46 +63,51 @@ pub struct ShaderProgram {
 }
 
 pub fn create_shader_program(
-    host_shader_program: &HostShaderProgram,
+    host_shader_program_descriptor: &HostShaderProgramDescriptor,
 ) -> Result<ShaderProgram, String> {
     assert!(
-        !host_shader_program
-            .descriptor
+        !host_shader_program_descriptor
             .vert_shader_file_path
             .is_empty(),
         "Host shader program must provide vert file path"
     );
     assert!(
-        !host_shader_program
-            .descriptor
+        !host_shader_program_descriptor
             .frag_shader_file_path
             .is_empty(),
         "Host shader program must provide frag file path",
     );
-    assert!(
-        !host_shader_program.vert_shader_source.is_empty(),
-        "Host shader program must provide vert source conde"
-    );
-    assert!(
-        !host_shader_program.frag_shader_source.is_empty(),
-        "Host shader program must provide frag source code"
-    );
+
+    let host_shader_program = loader::load_host_shader_program(&host_shader_program_descriptor);
+    if let Result::Err(msg) = host_shader_program {
+        return Result::Err(msg);
+    }
+    let host_shader_program = host_shader_program.unwrap();
 
     let vert_shader_handle =
         create_shader(&host_shader_program.vert_shader_source, gl::VERTEX_SHADER);
     if let Err(msg) = vert_shader_handle {
-        return Result::Err(format!("Failed to create shader:\n{}", msg));
+        return Result::Err(format!(
+            "Failed to create shader name:'{}':\n{}",
+            host_shader_program_descriptor.vert_shader_file_path, msg
+        ));
     }
     let vert_shader_handle = vert_shader_handle.unwrap();
     let frag_shader_handle =
         create_shader(&host_shader_program.frag_shader_source, gl::FRAGMENT_SHADER);
     if let Err(msg) = frag_shader_handle {
-        return Result::Err(format!("Failed to create shader:\n{}", msg));
+        return Result::Err(format!(
+            "Failed to create shader name: '{}':\n{}",
+            host_shader_program_descriptor.frag_shader_file_path, msg
+        ));
     }
     let frag_shader_handle = frag_shader_handle.unwrap();
     let handle = unsafe { gl::CreateProgram() };
     if let Err(msg) = link_shader_program(handle, vert_shader_handle, frag_shader_handle) {
-        return Result::Err(format!("Failed to link shader program:\n{}", msg));
+        return Result::Err(format!(
+            "Failed to link shader program name: '{}':\n{}",
+            host_shader_program_descriptor.name, msg
+        ));
     }
 
     Result::Ok(ShaderProgram {

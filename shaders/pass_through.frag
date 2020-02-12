@@ -13,22 +13,34 @@ layout (binding = 4, location = 34) uniform sampler2D uRoughnessSampler2D;
 
 layout (location = 0) in vec3 normal;
 layout (location = 1) in vec2 uv;
-layout (location = 2) in vec4 normalView;
-layout (location = 3) in vec4 lightView;
-layout (location = 4) in vec4 posView;
+layout (location = 2) in vec3 normalView;
+layout (location = 4) in vec3 posView;
 
 layout (location = 0) out vec4 outColor;
 
+vec3 pointLightWindowing(vec3 l, vec3 pointLightColor)
+{
+    float r0 = 1;
+    float r_min = 50;
+    float r_max = 100;
+    float r = length(l);
+
+    float windowed_r = max(0, pow(1 - r / r_max, 2));
+    vec3 attenuated_color = pointLightColor * pow( r0 / max(windowed_r, r_min), 2);
+
+    return attenuated_color;
+}
+
 void main()
 {
-    vec3 light_direction = -normalize(vec3(1, 1, 1));
+    vec3 pointLightColor = vec3(1, 1, 1);
+    const vec3 pointLightPosWorld = vec3(0, 1000, 0);
+    const vec3 pointLightPosView = (uViewMat4 * vec4(pointLightPosWorld, 1)).xyz;
+
     vec4 albedo = texture(uAlbedoMapSampler2D, uv, 0);
-    float diffuse = dot(normal, light_direction) * 0.5;
 
-    vec3 positionView = posView.xyz / posView.w;
+    vec3 l = pointLightPosView - posView;
+    vec3 attenuated_color = pointLightWindowing(l, pointLightColor);
 
-    float spec = max(0, dot(reflect(lightView.xyz, normalView.xyz), -normalize(positionView)));
-
-    outColor = vec4(albedo.rgb * spec, albedo.a);
-    outColor = albedo;
+    outColor = vec4(attenuated_color * max(0, dot(normalView, l)), 1);
 }

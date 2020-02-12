@@ -23,7 +23,7 @@ pub struct MeshAttribute {
 #[derive(Clone)]
 pub struct HostMesh {
     pub attributes: Vec<MeshAttribute>,
-    pub material_index: u32,
+    pub material_index: usize,
     pub vertices: Vertices,
     pub normals: Normals,
     pub uvs: UVs,
@@ -53,7 +53,7 @@ pub struct DeviceMesh {
     pub attributes: Vec<MeshAttribute>,
     pub vbos: Vec<u32>,
     pub indices: u32,
-    pub material_index: u32,
+    pub material_index: usize,
 }
 
 #[derive(Clone)]
@@ -84,7 +84,7 @@ pub struct DeviceModel {
 }
 
 pub fn create_host_mesh(
-    material_index: u32,
+    material_index: usize,
     vertices: Vertices,
     normals: Normals,
     uvs: UVs,

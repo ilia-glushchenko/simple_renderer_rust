@@ -10,20 +10,16 @@ layout (location = 2) in vec2 aUV;
 
 layout (location = 0) out vec3 normal;
 layout (location = 1) out vec2 uv;
-layout (location = 2) out vec4 normalView;
-layout (location = 3) out vec4 lightView;
-layout (location = 4) out vec4 posView;
-
-const vec3 light_direction = -normalize(vec3(1, 1, 1));
+layout (location = 2) out vec3 normalView;
+layout (location = 4) out vec3 posView;
 
 void main()
 {
     normal = aNormal;
     uv = aUV;
 
-    normalView = uViewMat4 * vec4(normal, 0);
-    lightView = uViewMat4 * vec4(light_direction, 0);
-    posView = uViewMat4 *  uModelMat4 * vec4(aPosition, 1);
+    normalView = (uViewMat4 * vec4(normal, 0)).xyz;
+    posView = (uViewMat4 *  uModelMat4 * vec4(aPosition, 1)).xyz;
 
     gl_Position = uProjMat4 * uViewMat4 * uModelMat4 * vec4(aPosition, 1);
 }

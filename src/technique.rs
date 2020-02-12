@@ -15,10 +15,14 @@ pub struct UniformProgramLocation {
     pub program: u32,
 }
 
-pub struct Uniform<T> {
-    pub name: String,
+pub struct UniformDataLoction<T> {
     pub locations: Vec<UniformProgramLocation>,
     pub data: Vec<T>,
+}
+
+pub struct Uniform<T> {
+    pub name: String,
+    pub data_location: UniformDataLoction<T>,
 }
 
 pub struct Uniforms {
@@ -29,9 +33,23 @@ pub struct Uniforms {
     pub mat4x4f: Vec<Uniform<math::Mat4x4f>>,
 }
 
+pub struct PerModelUnifrom<T> {
+    pub name: String,
+    pub data_locations: Vec<UniformDataLoction<T>>,
+}
+
+pub struct PerModelUniforms {
+    pub vec1f: Vec<PerModelUnifrom<math::Vec1f>>,
+    pub vec1u: Vec<PerModelUnifrom<math::Vec1u>>,
+    pub vec2f: Vec<PerModelUnifrom<math::Vec2f>>,
+    pub vec3f: Vec<PerModelUnifrom<math::Vec3f>>,
+    pub mat4x4f: Vec<PerModelUnifrom<math::Mat4x4f>>,
+}
+
 pub struct Technique {
+    pub name: String,
     pub per_frame_uniforms: Uniforms,
-    pub per_model_uniforms: Uniforms,
+    pub per_model_uniforms: PerModelUniforms,
     pub textures_2d: Vec<model::Sampler2d>,
 }
 
@@ -42,9 +60,35 @@ pub enum Techniques {
 
 impl Eq for Techniques {}
 
+pub fn is_technique_valid(technique: &Technique) -> Result<(), String> {
+    if let Err(msg) = check_empty_uniforms(&technique.per_frame_uniforms) {
+        return Err(format!(
+            "Technique '{}' is invalid.\n{}",
+            technique.name, msg
+        ));
+    }
+
+    if let Err(msg) = check_empty_per_model_uniforms(&technique.per_model_uniforms) {
+        return Err(format!(
+            "Technique '{}' is invalid.\n{}",
+            technique.name, msg
+        ));
+    }
+
+    if let Err(msg) = check_per_model_uniforms_consistency(&technique.per_model_uniforms) {
+        return Err(format!(
+            "Technique '{}' is inlvalid!\n{}",
+            technique.name, msg
+        ));
+    }
+
+    Ok(())
+}
+
 pub fn update_per_frame_uniforms(program: &shader::ShaderProgram, uniforms: &Uniforms) {
     for uniform in &uniforms.vec1f {
         if let Some(location) = uniform
+            .data_location
             .locations
             .iter()
             .find(|l| l.program == program.handle)
@@ -52,8 +96,8 @@ pub fn update_per_frame_uniforms(program: &shader::ShaderProgram, uniforms: &Uni
             unsafe {
                 gl::Uniform1fv(
                     location.location as i32,
-                    uniform.data.len() as i32,
-                    uniform.data.as_ptr() as *const f32,
+                    uniform.data_location.data.len() as i32,
+                    uniform.data_location.data.as_ptr() as *const f32,
                 );
             }
         }
@@ -61,6 +105,7 @@ pub fn update_per_frame_uniforms(program: &shader::ShaderProgram, uniforms: &Uni
 
     for uniform in &uniforms.vec1u {
         if let Some(location) = uniform
+            .data_location
             .locations
             .iter()
             .find(|l| l.program == program.handle)
@@ -68,8 +113,8 @@ pub fn update_per_frame_uniforms(program: &shader::ShaderProgram, uniforms: &Uni
             unsafe {
                 gl::Uniform1uiv(
                     location.location as i32,
-                    uniform.data.len() as i32,
-                    uniform.data.as_ptr() as *const u32,
+                    uniform.data_location.data.len() as i32,
+                    uniform.data_location.data.as_ptr() as *const u32,
                 );
             }
         }
@@ -77,6 +122,7 @@ pub fn update_per_frame_uniforms(program: &shader::ShaderProgram, uniforms: &Uni
 
     for uniform in &uniforms.vec2f {
         if let Some(location) = uniform
+            .data_location
             .locations
             .iter()
             .find(|l| l.program == program.handle)
@@ -84,8 +130,8 @@ pub fn update_per_frame_uniforms(program: &shader::ShaderProgram, uniforms: &Uni
             unsafe {
                 gl::Uniform2fv(
                     location.location as i32,
-                    uniform.data.len() as i32,
-                    uniform.data.as_ptr() as *const f32,
+                    uniform.data_location.data.len() as i32,
+                    uniform.data_location.data.as_ptr() as *const f32,
                 );
             }
         }
@@ -93,6 +139,7 @@ pub fn update_per_frame_uniforms(program: &shader::ShaderProgram, uniforms: &Uni
 
     for uniform in &uniforms.vec3f {
         if let Some(location) = uniform
+            .data_location
             .locations
             .iter()
             .find(|l| l.program == program.handle)
@@ -100,8 +147,8 @@ pub fn update_per_frame_uniforms(program: &shader::ShaderProgram, uniforms: &Uni
             unsafe {
                 gl::Uniform3fv(
                     location.location as i32,
-                    uniform.data.len() as i32,
-                    uniform.data.as_ptr() as *const f32,
+                    uniform.data_location.data.len() as i32,
+                    uniform.data_location.data.as_ptr() as *const f32,
                 );
             }
         }
@@ -109,6 +156,7 @@ pub fn update_per_frame_uniforms(program: &shader::ShaderProgram, uniforms: &Uni
 
     for uniform in &uniforms.mat4x4f {
         if let Some(location) = uniform
+            .data_location
             .locations
             .iter()
             .find(|l| l.program == program.handle)
@@ -116,9 +164,9 @@ pub fn update_per_frame_uniforms(program: &shader::ShaderProgram, uniforms: &Uni
             unsafe {
                 gl::UniformMatrix4fv(
                     location.location as i32,
-                    uniform.data.len() as i32,
+                    uniform.data_location.data.len() as i32,
                     gl::TRUE, // Transposes the matrix, GL uses different major
-                    uniform.data.as_ptr() as *const f32,
+                    uniform.data_location.data.as_ptr() as *const f32,
                 );
             }
         }
@@ -127,11 +175,11 @@ pub fn update_per_frame_uniforms(program: &shader::ShaderProgram, uniforms: &Uni
 
 pub fn update_per_model_uniform(
     program: &shader::ShaderProgram,
-    uniforms: &Uniforms,
+    uniforms: &PerModelUniforms,
     index: usize,
 ) {
-    if let Some(uniform) = uniforms.vec1f.get(index) {
-        if let Some(location) = uniform
+    for uniform in &uniforms.vec1f {
+        if let Some(location) = uniform.data_locations[index]
             .locations
             .iter()
             .find(|l| l.program == program.handle)
@@ -139,15 +187,15 @@ pub fn update_per_model_uniform(
             unsafe {
                 gl::Uniform1fv(
                     location.location as i32,
-                    uniform.data.len() as i32,
-                    uniform.data.as_ptr() as *const f32,
+                    uniform.data_locations[index].data.len() as i32,
+                    uniform.data_locations[index].data.as_ptr() as *const f32,
                 );
             }
         }
     }
 
-    if let Some(uniform) = uniforms.vec1u.get(index) {
-        if let Some(location) = uniform
+    for uniform in &uniforms.vec1u {
+        if let Some(location) = uniform.data_locations[index]
             .locations
             .iter()
             .find(|l| l.program == program.handle)
@@ -155,15 +203,15 @@ pub fn update_per_model_uniform(
             unsafe {
                 gl::Uniform1uiv(
                     location.location as i32,
-                    uniform.data.len() as i32,
-                    uniform.data.as_ptr() as *const u32,
+                    uniform.data_locations[index].data.len() as i32,
+                    uniform.data_locations[index].data.as_ptr() as *const u32,
                 );
             }
         }
     }
 
-    if let Some(uniform) = uniforms.vec2f.get(index) {
-        if let Some(location) = uniform
+    for uniform in &uniforms.vec2f {
+        if let Some(location) = uniform.data_locations[index]
             .locations
             .iter()
             .find(|l| l.program == program.handle)
@@ -171,15 +219,15 @@ pub fn update_per_model_uniform(
             unsafe {
                 gl::Uniform2fv(
                     location.location as i32,
-                    uniform.data.len() as i32,
-                    uniform.data.as_ptr() as *const f32,
+                    uniform.data_locations[index].data.len() as i32,
+                    uniform.data_locations[index].data.as_ptr() as *const f32,
                 );
             }
         }
     }
 
-    if let Some(uniform) = uniforms.vec3f.get(index) {
-        if let Some(location) = uniform
+    for uniform in &uniforms.vec3f {
+        if let Some(location) = uniform.data_locations[index]
             .locations
             .iter()
             .find(|l| l.program == program.handle)
@@ -187,15 +235,15 @@ pub fn update_per_model_uniform(
             unsafe {
                 gl::Uniform3fv(
                     location.location as i32,
-                    uniform.data.len() as i32,
-                    uniform.data.as_ptr() as *const f32,
+                    uniform.data_locations[index].data.len() as i32,
+                    uniform.data_locations[index].data.as_ptr() as *const f32,
                 );
             }
         }
     }
 
-    if let Some(uniform) = uniforms.mat4x4f.get(index) {
-        if let Some(location) = uniform
+    for uniform in &uniforms.mat4x4f {
+        if let Some(location) = uniform.data_locations[index]
             .locations
             .iter()
             .find(|l| l.program == program.handle)
@@ -203,9 +251,9 @@ pub fn update_per_model_uniform(
             unsafe {
                 gl::UniformMatrix4fv(
                     location.location as i32,
-                    uniform.data.len() as i32,
+                    uniform.data_locations[index].data.len() as i32,
                     gl::TRUE, // Transposes the matrix, GL uses different major
-                    uniform.data.as_ptr() as *const f32,
+                    uniform.data_locations[index].data.as_ptr() as *const f32,
                 );
             }
         }
@@ -223,11 +271,26 @@ pub fn bind_shader_program_to_technique(
     bind_scalar_uniforms_to_shader_program(program, &mut technique.per_frame_uniforms.vec3f);
     bind_scalar_uniforms_to_shader_program(program, &mut technique.per_frame_uniforms.mat4x4f);
 
-    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_model_uniforms.vec1f);
-    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_model_uniforms.vec1u);
-    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_model_uniforms.vec2f);
-    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_model_uniforms.vec3f);
-    bind_scalar_uniforms_to_shader_program(program, &mut technique.per_model_uniforms.mat4x4f);
+    bind_scalar_per_model_uniforms_to_shader_program(
+        &program,
+        &mut technique.per_model_uniforms.vec1f,
+    );
+    bind_scalar_per_model_uniforms_to_shader_program(
+        &program,
+        &mut technique.per_model_uniforms.vec1u,
+    );
+    bind_scalar_per_model_uniforms_to_shader_program(
+        &program,
+        &mut technique.per_model_uniforms.vec2f,
+    );
+    bind_scalar_per_model_uniforms_to_shader_program(
+        &program,
+        &mut technique.per_model_uniforms.vec3f,
+    );
+    bind_scalar_per_model_uniforms_to_shader_program(
+        &program,
+        &mut technique.per_model_uniforms.mat4x4f,
+    );
 
     bind_texture2d_to_shader_program(program, &mut technique.textures_2d);
 }
@@ -254,23 +317,23 @@ pub fn unbind_shader_program_from_technique(technique: &mut Technique, program_h
         &mut technique.per_frame_uniforms.mat4x4f,
     );
 
-    unbind_scalar_uniforms_from_shader_program(
+    unbind_scalar_per_model_uniforms_from_shader_program(
         program_handle,
         &mut technique.per_model_uniforms.vec1f,
     );
-    unbind_scalar_uniforms_from_shader_program(
+    unbind_scalar_per_model_uniforms_from_shader_program(
         program_handle,
         &mut technique.per_model_uniforms.vec1u,
     );
-    unbind_scalar_uniforms_from_shader_program(
+    unbind_scalar_per_model_uniforms_from_shader_program(
         program_handle,
         &mut technique.per_model_uniforms.vec2f,
     );
-    unbind_scalar_uniforms_from_shader_program(
+    unbind_scalar_per_model_uniforms_from_shader_program(
         program_handle,
         &mut technique.per_model_uniforms.vec3f,
     );
-    unbind_scalar_uniforms_from_shader_program(
+    unbind_scalar_per_model_uniforms_from_shader_program(
         program_handle,
         &mut technique.per_model_uniforms.mat4x4f,
     );
@@ -280,7 +343,23 @@ pub fn unbind_shader_program_from_technique(technique: &mut Technique, program_h
 
 fn unbind_scalar_uniforms_from_shader_program<T>(program_handle: u32, uniforms: &mut [Uniform<T>]) {
     for uniform in uniforms.iter_mut() {
-        uniform.locations.retain(|l| l.program != program_handle);
+        uniform
+            .data_location
+            .locations
+            .retain(|l| l.program != program_handle);
+    }
+}
+
+fn unbind_scalar_per_model_uniforms_from_shader_program<T>(
+    program_handle: u32,
+    uniforms: &mut Vec<PerModelUnifrom<T>>,
+) {
+    for uniform in uniforms {
+        for data_location in &mut uniform.data_locations {
+            data_location
+                .locations
+                .retain(|l| l.program != program_handle);
+        }
     }
 }
 
@@ -292,6 +371,7 @@ fn bind_scalar_uniforms_to_shader_program<T>(
         uniforms
             .iter()
             .find(|&uniform| uniform
+                .data_location
                 .locations
                 .iter()
                 .find(|l| l.program == program.handle)
@@ -306,13 +386,58 @@ fn bind_scalar_uniforms_to_shader_program<T>(
             .iter()
             .find(|x| x.name == uniform.name)
         {
-            uniform.locations.push(UniformProgramLocation {
-                program: program.handle,
-                location: program_uniform.location,
-            });
+            uniform
+                .data_location
+                .locations
+                .push(UniformProgramLocation {
+                    program: program.handle,
+                    location: program_uniform.location,
+                });
         } else {
             log::log_warning(format!(
                 "Failed to find '{}' uniform location in program id: '{}' name: '{}'",
+                uniform.name, program.handle, program.name
+            ));
+        }
+    }
+}
+
+fn bind_scalar_per_model_uniforms_to_shader_program<T>(
+    program: &shader::ShaderProgram,
+    uniforms: &mut Vec<PerModelUnifrom<T>>,
+) {
+    assert!(
+        uniforms
+            .iter()
+            .find(|&uniform| uniform
+                .data_locations
+                .iter()
+                .find(|data_location| data_location
+                    .locations
+                    .iter()
+                    .find(|l| l.program == program.handle)
+                    .is_some())
+                .is_some())
+            .is_none(),
+        "Uniforms can only be bound to a program once."
+    );
+
+    for uniform in uniforms.iter_mut() {
+        if let Some(program_uniform) = program
+            .scalar_uniforms
+            .iter()
+            .find(|x| x.name == uniform.name)
+        {
+            for data_location in &mut uniform.data_locations {
+                data_location.locations.push(UniformProgramLocation {
+                    program: program.handle,
+                    location: program_uniform.location,
+                });
+            }
+        } else {
+            log::log_warning(format!(
+                "Technique has a uniform that is not bound! \
+                 Failed to find '{}' uniform location in program id: '{}' name: '{}'",
                 uniform.name, program.handle, program.name
             ));
         }
@@ -358,4 +483,114 @@ fn unbind_texture2d_from_shader_program(program_handle: u32, textures: &mut [mod
     for texture in textures.iter_mut() {
         texture.bindings.retain(|b| b.program != program_handle);
     }
+}
+
+fn check_empty_uniforms(uniforms: &Uniforms) -> Result<(), String> {
+    if let Err(msg) = check_empty_uniform(&uniforms.vec1f) {
+        return Err(msg);
+    }
+    if let Err(msg) = check_empty_uniform(&uniforms.vec1u) {
+        return Err(msg);
+    }
+    if let Err(msg) = check_empty_uniform(&uniforms.vec2f) {
+        return Err(msg);
+    }
+    if let Err(msg) = check_empty_uniform(&uniforms.vec3f) {
+        return Err(msg);
+    }
+    if let Err(msg) = check_empty_uniform(&uniforms.mat4x4f) {
+        return Err(msg);
+    }
+
+    Ok(())
+}
+
+fn check_empty_uniform<T>(uniforms: &[Uniform<T>]) -> Result<(), String> {
+    for (i, uniform) in uniforms.iter().enumerate() {
+        if uniform.data_location.data.is_empty() {
+            return Err(format!(
+                "Uniform '{}' does not have any data.",
+                uniform.name
+            ));
+        }
+        if uniform.name.is_empty() {
+            return Err(format!("Uniform #'{}' has empty name.", i));
+        }
+    }
+
+    Ok(())
+}
+
+fn check_empty_per_model_uniforms(uniforms: &PerModelUniforms) -> Result<(), String> {
+    if let Err(msg) = check_empty_per_model_uniform(&uniforms.vec1f) {
+        return Err(msg);
+    }
+    if let Err(msg) = check_empty_per_model_uniform(&uniforms.vec1u) {
+        return Err(msg);
+    }
+    if let Err(msg) = check_empty_per_model_uniform(&uniforms.vec2f) {
+        return Err(msg);
+    }
+    if let Err(msg) = check_empty_per_model_uniform(&uniforms.vec3f) {
+        return Err(msg);
+    }
+    if let Err(msg) = check_empty_per_model_uniform(&uniforms.mat4x4f) {
+        return Err(msg);
+    }
+
+    Ok(())
+}
+
+fn check_empty_per_model_uniform<T>(uniforms: &Vec<PerModelUnifrom<T>>) -> Result<(), String> {
+    for (i, uniform) in uniforms.iter().enumerate() {
+        if uniform.name.is_empty() {
+            return Err(format!("Uniform #'{}' has empty name.", i));
+        }
+
+        for data_location in &uniform.data_locations {
+            if data_location.data.is_empty() {
+                return Err(format!(
+                    "Per model uniform '{}' has empty data at index {}.",
+                    uniform.name, i
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn check_per_model_uniforms_consistency(uniforms: &PerModelUniforms) -> Result<(), String> {
+    if let Err(msg) = check_per_model_uniform_consistency(&uniforms.vec1f) {
+        return Err(msg);
+    }
+    if let Err(msg) = check_per_model_uniform_consistency(&uniforms.vec1u) {
+        return Err(msg);
+    }
+    if let Err(msg) = check_per_model_uniform_consistency(&uniforms.vec2f) {
+        return Err(msg);
+    }
+    if let Err(msg) = check_per_model_uniform_consistency(&uniforms.vec3f) {
+        return Err(msg);
+    }
+    if let Err(msg) = check_per_model_uniform_consistency(&uniforms.mat4x4f) {
+        return Err(msg);
+    }
+
+    Ok(())
+}
+
+fn check_per_model_uniform_consistency<T>(
+    uniforms: &Vec<PerModelUnifrom<T>>,
+) -> Result<(), String> {
+    if !uniforms.is_empty() {
+        let reference_len = uniforms.first().unwrap().data_locations.len();
+        for i in 1..uniforms.len() {
+            if uniforms[i].data_locations.len() != reference_len {
+                return Err("Per model uniforms have inconsistent lengths.".to_string());
+            }
+        }
+    }
+
+    Ok(())
 }

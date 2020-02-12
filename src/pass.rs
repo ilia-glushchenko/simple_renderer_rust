@@ -109,6 +109,177 @@ pub fn delete_render_pass(pass: &mut Pass) {
     pass.dependencies.clear();
 }
 
+pub fn is_render_pass_valid(
+    pass: &Pass,
+    techniques: &technique::TechniqueMap,
+    device_model: &model::DeviceModel,
+) -> Result<(), String> {
+    // Check scalar uniforms
+    {
+        let mut scalar_uniforms: HashMap<&String, u32> = pass
+            .program
+            .scalar_uniforms
+            .iter()
+            .map(|x| (&x.name, 0))
+            .collect();
+
+        for technique in &pass.techniques {
+            for uniform in techniques[technique].per_frame_uniforms.vec1f.iter() {
+                *scalar_uniforms.entry(&uniform.name).or_insert(0) += 1;
+            }
+            for uniform in techniques[technique].per_frame_uniforms.vec1u.iter() {
+                *scalar_uniforms.entry(&uniform.name).or_insert(0) += 1;
+            }
+            for uniform in techniques[technique].per_frame_uniforms.vec2f.iter() {
+                *scalar_uniforms.entry(&uniform.name).or_insert(0) += 1;
+            }
+            for uniform in techniques[technique].per_frame_uniforms.vec3f.iter() {
+                *scalar_uniforms.entry(&uniform.name).or_insert(0) += 1;
+            }
+            for uniform in techniques[technique].per_frame_uniforms.mat4x4f.iter() {
+                *scalar_uniforms.entry(&uniform.name).or_insert(0) += 1;
+            }
+
+            for uniform in techniques[technique].per_model_uniforms.vec1f.iter() {
+                *scalar_uniforms.entry(&uniform.name).or_insert(0) += 1;
+            }
+            for uniform in techniques[technique].per_model_uniforms.vec1u.iter() {
+                *scalar_uniforms.entry(&uniform.name).or_insert(0) += 1;
+            }
+            for uniform in techniques[technique].per_model_uniforms.vec2f.iter() {
+                *scalar_uniforms.entry(&uniform.name).or_insert(0) += 1;
+            }
+            for uniform in techniques[technique].per_model_uniforms.vec3f.iter() {
+                *scalar_uniforms.entry(&uniform.name).or_insert(0) += 1;
+            }
+            for uniform in techniques[technique].per_model_uniforms.mat4x4f.iter() {
+                *scalar_uniforms.entry(&uniform.name).or_insert(0) += 1;
+            }
+        }
+
+        for (uniform, count) in scalar_uniforms {
+            if count > 1 {
+                return Err(format!(
+                    "Render pass '{}' is invalid! Uniform '{}' provided '{}' times.",
+                    pass.name, uniform, count
+                ));
+            } else if count == 0 {
+                return Err(format!(
+                    "Render pass '{}' is invalid! Uniform '{}' not provided by tehcniques.",
+                    pass.name, uniform
+                ));
+            }
+        }
+    }
+
+    // Check attributes
+    {
+        for (i, mesh) in device_model.meshes.iter().enumerate() {
+            for shader_attribute in &pass.program.attributes {
+                if let None = mesh
+                    .attributes
+                    .iter()
+                    .find(|a| a.name == shader_attribute.name)
+                {
+                    return Err(format!(
+                        "Render pass '{}' is invalid! \
+                         Mesh #'{}' does not provide shader attribute '{}'.",
+                        pass.name, i, shader_attribute.name
+                    ));
+                }
+            }
+        }
+    }
+
+    // Check texture samplers
+    {
+        for (i, mesh) in device_model.meshes.iter().enumerate() {
+            let mut textures: Vec<&model::Sampler2d> = Vec::new();
+
+            if let Some(texture) = &device_model.materials[mesh.material_index].albedo_texture {
+                textures.push(&texture);
+            }
+            if let Some(texture) = &device_model.materials[mesh.material_index].normal_texture {
+                textures.push(&texture);
+            }
+            if let Some(texture) = &device_model.materials[mesh.material_index].bump_texture {
+                textures.push(&texture);
+            }
+            if let Some(texture) = &device_model.materials[mesh.material_index].metallic_texture {
+                textures.push(&texture);
+            }
+            if let Some(texture) = &device_model.materials[mesh.material_index].roughness_texture {
+                textures.push(&texture);
+            }
+
+            for sampler_2d in &pass.program.sampler_2d {
+                let dependency = pass
+                    .dependencies
+                    .iter()
+                    .find(|d| d.texture.name == sampler_2d.name);
+
+                let material = textures.iter().find(|t| t.texture.name == sampler_2d.name);
+
+                let mut technique_textures: Vec<&model::Sampler2d> = Vec::new();
+                for technique in &pass.techniques {
+                    if let Some(texture) = &techniques[technique]
+                        .textures_2d
+                        .iter()
+                        .find(|t| t.texture.name == sampler_2d.name)
+                    {
+                        technique_textures.push(texture);
+                    }
+                }
+                if technique_textures.len() > 1 {
+                    return Err(format!(
+                        "Render pass '{}' is invalid! \
+                         Shader's '{}' 2D Sampler '{}' bound by '{}' techniques. Can only handle 1.",
+                         pass.name, pass.program.name, sampler_2d.name,  technique_textures.len()
+                    ));
+                }
+
+                //ToDo: Make better handling of those errors
+                if dependency.is_none() && material.is_none() && technique_textures.is_empty() {
+                    log::log_error(format!(
+                        "Render pass '{}' is invalid! \
+                         Shader's '{}' 2D Sampler '{}' is not bound by dependencies, techniques or material for mesh #'{}'.",
+                         pass.name, pass.program.name, sampler_2d.name, i
+                    ));
+                } else if dependency.is_some()
+                    && material.is_some()
+                    && technique_textures.is_empty()
+                {
+                    log::log_error(format!(
+                        "Render pass '{}' is invalid! \
+                         Shader's '{}' 2D Sampler '{}' is bound both by pass dependency and material for mesh #'{}'.",
+                         pass.name, pass.program.name, sampler_2d.name, i
+                    ));
+                } else if dependency.is_some()
+                    && material.is_none()
+                    && !technique_textures.is_empty()
+                {
+                    log::log_error(format!(
+                        "Render pass '{}' is invalid! \
+                         Shader's '{}' 2D Sampler '{}' is bound both by pass dependency and a technique.",
+                         pass.name, pass.program.name, sampler_2d.name
+                    ));
+                } else if dependency.is_none()
+                    && material.is_some()
+                    && !technique_textures.is_empty()
+                {
+                    log::log_error(format!(
+                        "Render pass '{}' is invalid! \
+                         Shader's '{}' 2D Sampler '{}' is bound both by technique and material for mesh #'{}'.",
+                         pass.name, pass.program.name, sampler_2d.name, i
+                    ));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 pub fn bind_device_model_to_render_pass(device_model: &mut model::DeviceModel, pass: &Pass) {
     for device_mesh in &mut device_model.meshes {
         model::bind_device_mesh_to_shader_program(device_mesh, &pass.program);
@@ -228,7 +399,14 @@ pub fn execute_render_pass(
         gl::UseProgram(pass.program.handle);
     }
 
-    for mesh in &model.meshes {
+    for technique in &pass.techniques {
+        technique::update_per_frame_uniforms(
+            &pass.program,
+            &techniques.get(&technique).unwrap().per_frame_uniforms,
+        );
+    }
+
+    for (i, mesh) in model.meshes.iter().enumerate() {
         unsafe {
             gl::BindVertexArray(mesh.vao);
         }
@@ -240,14 +418,10 @@ pub fn execute_render_pass(
         bind_dependencies(&pass.program, &pass.dependencies);
 
         for technique in &pass.techniques {
-            technique::update_per_frame_uniforms(
-                &pass.program,
-                &techniques.get(&technique).unwrap().per_frame_uniforms,
-            );
             technique::update_per_model_uniform(
                 &pass.program,
                 &techniques.get(&technique).unwrap().per_model_uniforms,
-                0,
+                i,
             );
         }
 

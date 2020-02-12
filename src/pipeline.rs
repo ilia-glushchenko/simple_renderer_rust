@@ -95,6 +95,20 @@ pub fn delete_render_pipeline(
     }
 }
 
+pub fn is_render_pipeline_valid(
+    pipeline: &Vec<pass::Pass>,
+    techniques: &technique::TechniqueMap,
+    device_model: &model::DeviceModel,
+) -> Result<(), String> {
+    for pass in pipeline {
+        if let Err(msg) = pass::is_render_pass_valid(&pass, &techniques, &device_model) {
+            return Err(msg);
+        }
+    }
+
+    Ok(())
+}
+
 pub fn reload_render_pipeline(pipeline: &mut Vec<pass::Pass>) -> Result<(), String> {
     let mut new_pipeline_programs: Vec<shader::ShaderProgram> = Vec::new();
 

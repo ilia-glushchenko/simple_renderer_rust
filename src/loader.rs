@@ -144,7 +144,7 @@ fn create_host_mesh_from_tobj_mesh(raw_model: &tobj::Model) -> model::HostMesh {
         raw_model
             .mesh
             .material_id
-            .expect("Model should have a material") as u32,
+            .expect("Model should have a material"),
         vertices,
         normals,
         uvs,

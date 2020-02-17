@@ -25,7 +25,7 @@ pub struct ShaderProgramArrayUniform {
 }
 
 #[derive(Clone)]
-pub struct ShaderProgramTexture2d {
+pub struct ShaderProgramTextureSampler {
     pub binding: u32,
     pub name: String,
 }
@@ -58,7 +58,7 @@ pub struct ShaderProgram {
     pub attributes: Vec<ShaderProgramAttribute>,
     pub scalar_uniforms: Vec<ShaderProgramScalarUniform>,
     pub array_uniforms: Vec<ShaderProgramArrayUniform>,
-    pub sampler_2d: Vec<ShaderProgramTexture2d>,
+    pub samplers: Vec<ShaderProgramTextureSampler>,
     pub outputs: Vec<ShaderProgramOutput>,
 }
 
@@ -142,7 +142,7 @@ pub fn create_shader_program(
                 &host_shader_program.descriptor.frag_shader_file_path,
             ],
         ),
-        sampler_2d: create_shader_program_2d_samplers(
+        samplers: create_shader_program_texture_samplers(
             vec![
                 &host_shader_program.vert_shader_source,
                 &host_shader_program.frag_shader_source,
@@ -165,7 +165,7 @@ pub fn delete_shader_program(program: &mut ShaderProgram) {
     program.attributes.clear();
     program.scalar_uniforms.clear();
     program.array_uniforms.clear();
-    program.sampler_2d.clear();
+    program.samplers.clear();
 }
 
 fn create_shader(shader_source: &str, shader_type: gl::types::GLenum) -> Result<u32, String> {
@@ -343,30 +343,32 @@ fn create_shader_program_array_uniforms(
     Vec::new()
 }
 
-fn create_shader_program_2d_samplers(
+fn create_shader_program_texture_samplers(
     files: Vec<&str>,
     filenames: Vec<&str>,
-) -> Vec<ShaderProgramTexture2d> {
+) -> Vec<ShaderProgramTextureSampler> {
     assert!(files.len() == filenames.len());
 
-    let mut shader_program_2d_samplers: Vec<ShaderProgramTexture2d> = Vec::new();
+    let mut shader_program_2d_samplers: Vec<ShaderProgramTextureSampler> = Vec::new();
     let mut i = 0;
     while i < files.len() {
         for sampler_name in
-            find_shader_program_inputs(files[i], ShaderProgramVariableType::Sampler2d, 10, 50)
+            find_shader_program_inputs(files[i], ShaderProgramVariableType::TextureSampler, 10, 50)
         {
-            if let ShaderProgramInputFindResult::Sampler2d(binding, sampler_name) = sampler_name {
+            if let ShaderProgramInputFindResult::TextureSampler(binding, sampler_name) =
+                sampler_name
+            {
                 if let None = shader_program_2d_samplers
                     .iter()
                     .find(|x| x.name == sampler_name)
                 {
-                    shader_program_2d_samplers.push(ShaderProgramTexture2d {
+                    shader_program_2d_samplers.push(ShaderProgramTextureSampler {
                         binding,
                         name: sampler_name,
                     })
                 }
             } else {
-                panic!("Expected Sampler2d result");
+                panic!("Expected texture sampler result");
             }
         }
 
@@ -395,7 +397,7 @@ fn create_shader_program_outputs(file: &str) -> Vec<ShaderProgramOutput> {
 enum ShaderProgramVariableType {
     In,
     Uniform,
-    Sampler2d,
+    TextureSampler,
     Output,
 }
 
@@ -403,7 +405,7 @@ enum ShaderProgramVariableType {
 enum ShaderProgramInputFindResult {
     In(String),
     Uniform(String),
-    Sampler2d(u32, String),
+    TextureSampler(u32, String),
     Output(String, String),
 }
 
@@ -420,8 +422,8 @@ fn find_shader_program_inputs(
             ShaderProgramVariableType::In => format!("layout (location = {}) in ", n),
             ShaderProgramVariableType::Uniform => format!("layout (location = {}) uniform ", n),
             ShaderProgramVariableType::Output => format!("layout (location = {}) out ", n),
-            ShaderProgramVariableType::Sampler2d => {
-                format!(", location = {}) uniform sampler2D ", n)
+            ShaderProgramVariableType::TextureSampler => {
+                format!(", location = {}) uniform sampler", n)
             }
         };
         let index = file.rfind(&layout_location);
@@ -449,18 +451,18 @@ fn find_shader_program_inputs(
                             ))
                         }
                     }
-                    ShaderProgramVariableType::Sampler2d => {
+                    ShaderProgramVariableType::TextureSampler => {
                         let binding_end_index = index - layout_location.len();
                         let binding_start_index = binding_end_index - 2;
 
                         let binding = file[binding_start_index..binding_end_index]
                             .trim()
                             .parse()
-                            .expect("Failed to convert Sampler2D Binding to integer");
+                            .expect("Failed to convert texture sampler binding to integer");
 
                         assert!(
                             None == inputs.iter().find(|input_find_result| {
-                                if let ShaderProgramInputFindResult::Sampler2d(
+                                if let ShaderProgramInputFindResult::TextureSampler(
                                     sampler_binding,
                                     sampler_name,
                                 ) = input_find_result
@@ -470,17 +472,17 @@ fn find_shader_program_inputs(
                                 }
                                 false
                             }),
-                            "Program contains multiple different bindings for {} sampler2d!",
+                            "Program contains multiple different bindings for {} texture sampler!",
                             attribute_name
                         );
 
                         if let None = inputs.iter().find(|x| {
-                            if let ShaderProgramInputFindResult::Sampler2d(_, name) = x {
+                            if let ShaderProgramInputFindResult::TextureSampler(_, name) = x {
                                 return *name == attribute_name;
                             }
                             false
                         }) {
-                            inputs.push(ShaderProgramInputFindResult::Sampler2d(
+                            inputs.push(ShaderProgramInputFindResult::TextureSampler(
                                 binding,
                                 attribute_name.clone(),
                             ))

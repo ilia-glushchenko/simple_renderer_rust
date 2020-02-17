@@ -18,8 +18,8 @@ pub fn create_default_camera(width: u32, height: u32) -> Camera {
         pos: math::zero_vec3(),
         pitch: 0.,
         yaw: 0.,
-        near: 10.0,
-        far: 20000.0,
+        near: 0.1,  //10.0,
+        far: 1000., //20000.0,
         aspect: width as f32 / height as f32,
         fov: f32::consts::PI / 2. * 0.66,
     }

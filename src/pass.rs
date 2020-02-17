@@ -51,7 +51,7 @@ pub struct PassDescriptor {
     pub techniques: Vec<technique::Techniques>,
 
     pub attachments: Vec<PassAttachmentDescriptor>,
-    pub dependencies: Vec<model::Sampler2d>,
+    pub dependencies: Vec<model::TextureSampler>,
 
     pub width: u32,
     pub height: u32,
@@ -65,7 +65,7 @@ pub struct Pass {
     pub desc: PassDescriptor,
 
     pub attachments: Vec<PassAttachment>,
-    pub dependencies: Vec<model::Sampler2d>,
+    pub dependencies: Vec<model::TextureSampler>,
 
     pub fbo: u32,
     pub width: u32,
@@ -80,7 +80,7 @@ pub fn create_render_pass(mut desc: PassDescriptor) -> Result<Pass, String> {
     let device_program = device_program.unwrap();
 
     for dependency in &mut desc.dependencies {
-        model::bind_shader_program_to_texture(&device_program, dependency);
+        technique::bind_shader_program_to_texture(&device_program, dependency);
     }
 
     let attachments = create_pass_attachments(&desc.attachments);
@@ -159,12 +159,12 @@ pub fn is_render_pass_valid(
 
         for (uniform, count) in scalar_uniforms {
             if count > 1 {
-                return Err(format!(
+                log::log_error(format!(
                     "Render pass '{}' is invalid! Uniform '{}' provided '{}' times.",
                     pass.name, uniform, count
                 ));
             } else if count == 0 {
-                return Err(format!(
+                log::log_error(format!(
                     "Render pass '{}' is invalid! Uniform '{}' not provided by tehcniques.",
                     pass.name, uniform
                 ));
@@ -194,7 +194,7 @@ pub fn is_render_pass_valid(
     // Check texture samplers
     {
         for (i, mesh) in device_model.meshes.iter().enumerate() {
-            let mut textures: Vec<&model::Sampler2d> = Vec::new();
+            let mut textures: Vec<&model::TextureSampler> = Vec::new();
 
             if let Some(texture) = &device_model.materials[mesh.material_index].albedo_texture {
                 textures.push(&texture);
@@ -212,20 +212,20 @@ pub fn is_render_pass_valid(
                 textures.push(&texture);
             }
 
-            for sampler_2d in &pass.program.sampler_2d {
+            for sampler in &pass.program.samplers {
                 let dependency = pass
                     .dependencies
                     .iter()
-                    .find(|d| d.texture.name == sampler_2d.name);
+                    .find(|d| d.texture.name == sampler.name);
 
-                let material = textures.iter().find(|t| t.texture.name == sampler_2d.name);
+                let material = textures.iter().find(|t| t.texture.name == sampler.name);
 
-                let mut technique_textures: Vec<&model::Sampler2d> = Vec::new();
+                let mut technique_textures: Vec<&model::TextureSampler> = Vec::new();
                 for technique in &pass.techniques {
                     if let Some(texture) = &techniques[technique]
-                        .textures_2d
+                        .textures
                         .iter()
-                        .find(|t| t.texture.name == sampler_2d.name)
+                        .find(|t| t.texture.name == sampler.name)
                     {
                         technique_textures.push(texture);
                     }
@@ -233,8 +233,8 @@ pub fn is_render_pass_valid(
                 if technique_textures.len() > 1 {
                     return Err(format!(
                         "Render pass '{}' is invalid! \
-                         Shader's '{}' 2D Sampler '{}' bound by '{}' techniques. Can only handle 1.",
-                         pass.name, pass.program.name, sampler_2d.name,  technique_textures.len()
+                         Shader's '{}' Texture Sampler '{}' bound by '{}' techniques. Can only handle 1.",
+                         pass.name, pass.program.name, sampler.name,  technique_textures.len()
                     ));
                 }
 
@@ -242,8 +242,8 @@ pub fn is_render_pass_valid(
                 if dependency.is_none() && material.is_none() && technique_textures.is_empty() {
                     log::log_error(format!(
                         "Render pass '{}' is invalid! \
-                         Shader's '{}' 2D Sampler '{}' is not bound by dependencies, techniques or material for mesh #'{}'.",
-                         pass.name, pass.program.name, sampler_2d.name, i
+                         Shader's '{}' Texture Sampler '{}' is not bound by dependencies, techniques or material for mesh #'{}'.",
+                         pass.name, pass.program.name, sampler.name, i
                     ));
                 } else if dependency.is_some()
                     && material.is_some()
@@ -251,8 +251,8 @@ pub fn is_render_pass_valid(
                 {
                     log::log_error(format!(
                         "Render pass '{}' is invalid! \
-                         Shader's '{}' 2D Sampler '{}' is bound both by pass dependency and material for mesh #'{}'.",
-                         pass.name, pass.program.name, sampler_2d.name, i
+                         Shader's '{}' Texture Sampler '{}' is bound both by pass dependency and material for mesh #'{}'.",
+                         pass.name, pass.program.name, sampler.name, i
                     ));
                 } else if dependency.is_some()
                     && material.is_none()
@@ -260,8 +260,8 @@ pub fn is_render_pass_valid(
                 {
                     log::log_error(format!(
                         "Render pass '{}' is invalid! \
-                         Shader's '{}' 2D Sampler '{}' is bound both by pass dependency and a technique.",
-                         pass.name, pass.program.name, sampler_2d.name
+                         Shader's '{}' Texture Sampler '{}' is bound both by pass dependency and a technique.",
+                         pass.name, pass.program.name, sampler.name
                     ));
                 } else if dependency.is_none()
                     && material.is_some()
@@ -269,8 +269,8 @@ pub fn is_render_pass_valid(
                 {
                     log::log_error(format!(
                         "Render pass '{}' is invalid! \
-                         Shader's '{}' 2D Sampler '{}' is bound both by technique and material for mesh #'{}'.",
-                         pass.name, pass.program.name, sampler_2d.name, i
+                         Shader's '{}' Texture Sampler '{}' is bound both by technique and material for mesh #'{}'.",
+                         pass.name, pass.program.name, sampler.name, i
                     ));
                 }
             }
@@ -282,10 +282,10 @@ pub fn is_render_pass_valid(
 
 pub fn bind_device_model_to_render_pass(device_model: &mut model::DeviceModel, pass: &Pass) {
     for device_mesh in &mut device_model.meshes {
-        model::bind_device_mesh_to_shader_program(device_mesh, &pass.program);
+        technique::bind_device_mesh_to_shader_program(device_mesh, &pass.program);
     }
     for device_material in &mut device_model.materials {
-        model::bind_shader_program_to_material(device_material, &pass.program);
+        technique::bind_shader_program_to_material(device_material, &pass.program);
     }
 }
 
@@ -294,7 +294,7 @@ pub fn unbind_device_model_from_render_pass(
     pass_program_handle: u32,
 ) {
     for device_material in &mut device_model.materials {
-        model::unbind_shader_program_from_material(device_material, pass_program_handle);
+        technique::unbind_shader_program_from_material(device_material, pass_program_handle);
     }
 }
 
@@ -399,11 +399,13 @@ pub fn execute_render_pass(
         gl::UseProgram(pass.program.handle);
     }
 
-    for technique in &pass.techniques {
-        technique::update_per_frame_uniforms(
-            &pass.program,
-            &techniques.get(&technique).unwrap().per_frame_uniforms,
-        );
+    for technique_name in &pass.techniques {
+        let technique = &techniques.get(&technique_name).unwrap();
+
+        technique::update_per_frame_uniforms(&pass.program, &technique.per_frame_uniforms);
+        for texture in &technique.textures {
+            bind_texture(pass.program.handle, texture);
+        }
     }
 
     for (i, mesh) in model.meshes.iter().enumerate() {
@@ -439,6 +441,13 @@ pub fn execute_render_pass(
             &pass.program,
             &model.materials[mesh.material_index as usize],
         );
+    }
+
+    for technique_name in &pass.techniques {
+        let technique = &techniques.get(&technique_name).unwrap();
+        for texture in &technique.textures {
+            unbind_texture(pass.program.handle, texture);
+        }
     }
 
     unsafe { gl::BindFramebuffer(gl::FRAMEBUFFER, pass.fbo) };
@@ -483,6 +492,19 @@ fn bind_material(program: &shader::ShaderProgram, material: &model::DeviceMateri
     if let Some(texture) = &material.roughness_texture {
         bind_texture(program.handle, texture);
     }
+
+    technique::update_per_frame_uniforms_vec3f(
+        program,
+        std::slice::from_ref(&material.scalar_albedo),
+    );
+    technique::update_per_frame_uniforms_vec1f(
+        program,
+        std::slice::from_ref(&material.scalar_roughness),
+    );
+    technique::update_per_frame_uniforms_vec1f(
+        program,
+        std::slice::from_ref(&material.scalar_metalness),
+    );
 }
 
 fn unbind_material(program: &shader::ShaderProgram, material: &model::DeviceMaterial) {
@@ -503,32 +525,32 @@ fn unbind_material(program: &shader::ShaderProgram, material: &model::DeviceMate
     }
 }
 
-fn bind_dependencies(program: &shader::ShaderProgram, dependencies: &Vec<model::Sampler2d>) {
+fn bind_dependencies(program: &shader::ShaderProgram, dependencies: &Vec<model::TextureSampler>) {
     for dep in dependencies {
         bind_texture(program.handle, dep);
     }
 }
 
-fn unbind_dependencies(program: &shader::ShaderProgram, dependencies: &Vec<model::Sampler2d>) {
+fn unbind_dependencies(program: &shader::ShaderProgram, dependencies: &Vec<model::TextureSampler>) {
     for dep in dependencies {
         unbind_texture(program.handle, dep);
     }
 }
 
-fn bind_texture(program: u32, texture: &model::Sampler2d) {
-    if let Some(binding) = texture.bindings.iter().find(|x| x.program == program) {
+fn bind_texture(program: u32, sampler: &model::TextureSampler) {
+    if let Some(binding) = sampler.bindings.iter().find(|x| x.program == program) {
         unsafe {
             gl::ActiveTexture(gl::TEXTURE0 as u32 + binding.binding);
-            gl::BindTexture(gl::TEXTURE_2D, texture.texture.handle);
+            gl::BindTexture(sampler.texture.target, sampler.texture.handle);
         }
     }
 }
 
-fn unbind_texture(program: u32, texture: &model::Sampler2d) {
-    if let Some(binding) = texture.bindings.iter().find(|x| x.program == program) {
+fn unbind_texture(program: u32, sampler: &model::TextureSampler) {
+    if let Some(binding) = sampler.bindings.iter().find(|x| x.program == program) {
         unsafe {
             gl::ActiveTexture(gl::TEXTURE0 as u32 + binding.binding);
-            gl::BindTexture(gl::TEXTURE_2D, 0);
+            gl::BindTexture(sampler.texture.target, 0);
         }
     }
 }

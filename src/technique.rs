@@ -4,22 +4,25 @@ use crate::math;
 use crate::model;
 use crate::shader;
 use std::collections::HashMap;
+use std::ptr::null;
 use std::string::String;
 use std::vec::Vec;
 
 pub type TechniqueMap = HashMap<Techniques, Technique>;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub struct UniformProgramLocation {
     pub location: u32,
     pub program: u32,
 }
 
+#[derive(Clone)]
 pub struct UniformDataLoction<T> {
     pub locations: Vec<UniformProgramLocation>,
     pub data: Vec<T>,
 }
 
+#[derive(Clone)]
 pub struct Uniform<T> {
     pub name: String,
     pub data_location: UniformDataLoction<T>,
@@ -50,15 +53,26 @@ pub struct Technique {
     pub name: String,
     pub per_frame_uniforms: Uniforms,
     pub per_model_uniforms: PerModelUniforms,
-    pub textures_2d: Vec<model::Sampler2d>,
+    pub textures: Vec<model::TextureSampler>,
 }
 
 #[derive(Hash, PartialEq, Clone)]
 pub enum Techniques {
     MVP,
+    Skybox,
 }
 
 impl Eq for Techniques {}
+
+pub fn create_new_uniform<T>(name: &str, data: T) -> Uniform<T> {
+    Uniform::<T> {
+        name: name.to_string(),
+        data_location: UniformDataLoction {
+            locations: Vec::new(),
+            data: vec![data],
+        },
+    }
+}
 
 pub fn is_technique_valid(technique: &Technique) -> Result<(), String> {
     if let Err(msg) = check_empty_uniforms(&technique.per_frame_uniforms) {
@@ -86,7 +100,18 @@ pub fn is_technique_valid(technique: &Technique) -> Result<(), String> {
 }
 
 pub fn update_per_frame_uniforms(program: &shader::ShaderProgram, uniforms: &Uniforms) {
-    for uniform in &uniforms.vec1f {
+    update_per_frame_uniforms_vec1f(program, &uniforms.vec1f);
+    update_per_frame_uniforms_vec1u(program, &uniforms.vec1u);
+    update_per_frame_uniforms_vec2f(program, &uniforms.vec2f);
+    update_per_frame_uniforms_vec3f(program, &uniforms.vec3f);
+    update_per_frame_uniforms_mat4x4f(program, &uniforms.mat4x4f);
+}
+
+pub fn update_per_frame_uniforms_vec1f(
+    program: &shader::ShaderProgram,
+    uniforms: &[Uniform<math::Vec1f>],
+) {
+    for uniform in uniforms {
         if let Some(location) = uniform
             .data_location
             .locations
@@ -102,8 +127,13 @@ pub fn update_per_frame_uniforms(program: &shader::ShaderProgram, uniforms: &Uni
             }
         }
     }
+}
 
-    for uniform in &uniforms.vec1u {
+pub fn update_per_frame_uniforms_vec1u(
+    program: &shader::ShaderProgram,
+    uniforms: &[Uniform<math::Vec1u>],
+) {
+    for uniform in uniforms {
         if let Some(location) = uniform
             .data_location
             .locations
@@ -119,8 +149,13 @@ pub fn update_per_frame_uniforms(program: &shader::ShaderProgram, uniforms: &Uni
             }
         }
     }
+}
 
-    for uniform in &uniforms.vec2f {
+pub fn update_per_frame_uniforms_vec2f(
+    program: &shader::ShaderProgram,
+    uniforms: &[Uniform<math::Vec2f>],
+) {
+    for uniform in uniforms {
         if let Some(location) = uniform
             .data_location
             .locations
@@ -136,8 +171,13 @@ pub fn update_per_frame_uniforms(program: &shader::ShaderProgram, uniforms: &Uni
             }
         }
     }
+}
 
-    for uniform in &uniforms.vec3f {
+pub fn update_per_frame_uniforms_vec3f(
+    program: &shader::ShaderProgram,
+    uniforms: &[Uniform<math::Vec3f>],
+) {
+    for uniform in uniforms {
         if let Some(location) = uniform
             .data_location
             .locations
@@ -153,8 +193,13 @@ pub fn update_per_frame_uniforms(program: &shader::ShaderProgram, uniforms: &Uni
             }
         }
     }
+}
 
-    for uniform in &uniforms.mat4x4f {
+pub fn update_per_frame_uniforms_mat4x4f(
+    program: &shader::ShaderProgram,
+    uniforms: &[Uniform<math::Mat4x4f>],
+) {
+    for uniform in uniforms {
         if let Some(location) = uniform
             .data_location
             .locations
@@ -260,7 +305,6 @@ pub fn update_per_model_uniform(
     }
 }
 
-//ToDo: Check if all ShaderProgram dependencies are satisfied
 pub fn bind_shader_program_to_technique(
     technique: &mut Technique,
     program: &shader::ShaderProgram,
@@ -292,7 +336,7 @@ pub fn bind_shader_program_to_technique(
         &mut technique.per_model_uniforms.mat4x4f,
     );
 
-    bind_texture2d_to_shader_program(program, &mut technique.textures_2d);
+    bind_texture_samplers_to_shader_program(program, &mut technique.textures);
 }
 
 pub fn unbind_shader_program_from_technique(technique: &mut Technique, program_handle: u32) {
@@ -338,29 +382,181 @@ pub fn unbind_shader_program_from_technique(technique: &mut Technique, program_h
         &mut technique.per_model_uniforms.mat4x4f,
     );
 
-    unbind_texture2d_from_shader_program(program_handle, &mut technique.textures_2d);
+    unbind_texture_samplers_from_shader_program(program_handle, &mut technique.textures);
 }
 
-fn unbind_scalar_uniforms_from_shader_program<T>(program_handle: u32, uniforms: &mut [Uniform<T>]) {
-    for uniform in uniforms.iter_mut() {
-        uniform
-            .data_location
-            .locations
-            .retain(|l| l.program != program_handle);
-    }
-}
-
-fn unbind_scalar_per_model_uniforms_from_shader_program<T>(
-    program_handle: u32,
-    uniforms: &mut Vec<PerModelUnifrom<T>>,
+pub fn bind_device_mesh_to_shader_program(
+    mesh: &model::DeviceMesh,
+    program: &shader::ShaderProgram,
 ) {
-    for uniform in uniforms {
-        for data_location in &mut uniform.data_locations {
-            data_location
-                .locations
-                .retain(|l| l.program != program_handle);
+    assert!(
+        mesh.vbos.len() == mesh.attributes.len(),
+        "DeviceModel is invalid! There must be Attribute for each VBO.",
+    );
+
+    for program_attribute in &program.attributes {
+        for (i, device_mesh_attribute) in mesh.attributes.iter().enumerate() {
+            if device_mesh_attribute.name == program_attribute.name {
+                let vbo = mesh.vbos[i];
+                unsafe {
+                    gl::BindVertexArray(mesh.vao);
+                    gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
+                    gl::EnableVertexAttribArray(program_attribute.location);
+                    gl::VertexAttribPointer(
+                        program_attribute.location,
+                        device_mesh_attribute.dimensions,
+                        device_mesh_attribute.data_type,
+                        gl::FALSE,
+                        device_mesh_attribute.stride,
+                        null(),
+                    );
+                }
+            }
+        }
+
+        unsafe {
+            gl::BindVertexArray(0);
+            gl::BindBuffer(gl::ARRAY_BUFFER, 0);
         }
     }
+}
+
+pub fn bind_shader_program_to_material(
+    material: &mut model::DeviceMaterial,
+    program: &shader::ShaderProgram,
+) {
+    if let Some(sampler) = &mut material.albedo_texture {
+        bind_shader_program_to_texture(program, sampler);
+    }
+    if let Some(sampler) = &mut material.normal_texture {
+        bind_shader_program_to_texture(program, sampler);
+    }
+    if let Some(sampler) = &mut material.bump_texture {
+        bind_shader_program_to_texture(program, sampler);
+    }
+    if let Some(sampler) = &mut material.metallic_texture {
+        bind_shader_program_to_texture(program, sampler);
+    }
+    if let Some(sampler) = &mut material.roughness_texture {
+        bind_shader_program_to_texture(program, sampler);
+    }
+
+    bind_scalar_uniforms_to_shader_program(
+        program,
+        std::slice::from_mut(&mut material.albedo_available),
+    );
+    bind_scalar_uniforms_to_shader_program(
+        program,
+        std::slice::from_mut(&mut material.normal_available),
+    );
+    bind_scalar_uniforms_to_shader_program(
+        program,
+        std::slice::from_mut(&mut material.bump_available),
+    );
+    bind_scalar_uniforms_to_shader_program(
+        program,
+        std::slice::from_mut(&mut material.roughness_available),
+    );
+    bind_scalar_uniforms_to_shader_program(
+        program,
+        std::slice::from_mut(&mut material.metallic_available),
+    );
+
+    bind_scalar_uniforms_to_shader_program(
+        program,
+        std::slice::from_mut(&mut material.scalar_albedo),
+    );
+    bind_scalar_uniforms_to_shader_program(
+        program,
+        std::slice::from_mut(&mut material.scalar_roughness),
+    );
+    bind_scalar_uniforms_to_shader_program(
+        program,
+        std::slice::from_mut(&mut material.scalar_metalness),
+    );
+}
+
+pub fn unbind_shader_program_from_material(
+    material: &mut model::DeviceMaterial,
+    program_handle: u32,
+) {
+    if let Some(sampler) = &mut material.albedo_texture {
+        unbind_shader_program_from_texture(program_handle, sampler);
+    }
+    if let Some(sampler) = &mut material.normal_texture {
+        unbind_shader_program_from_texture(program_handle, sampler);
+    }
+    if let Some(sampler) = &mut material.bump_texture {
+        unbind_shader_program_from_texture(program_handle, sampler);
+    }
+    if let Some(sampler) = &mut material.metallic_texture {
+        unbind_shader_program_from_texture(program_handle, sampler);
+    }
+    if let Some(sampler) = &mut material.roughness_texture {
+        unbind_shader_program_from_texture(program_handle, sampler);
+    }
+
+    unbind_scalar_uniforms_from_shader_program(
+        program_handle,
+        std::slice::from_mut(&mut material.albedo_available),
+    );
+    unbind_scalar_uniforms_from_shader_program(
+        program_handle,
+        std::slice::from_mut(&mut material.normal_available),
+    );
+    unbind_scalar_uniforms_from_shader_program(
+        program_handle,
+        std::slice::from_mut(&mut material.bump_available),
+    );
+    unbind_scalar_uniforms_from_shader_program(
+        program_handle,
+        std::slice::from_mut(&mut material.roughness_available),
+    );
+    unbind_scalar_uniforms_from_shader_program(
+        program_handle,
+        std::slice::from_mut(&mut material.metallic_available),
+    );
+
+    unbind_scalar_uniforms_from_shader_program(
+        program_handle,
+        std::slice::from_mut(&mut material.scalar_albedo),
+    );
+    unbind_scalar_uniforms_from_shader_program(
+        program_handle,
+        std::slice::from_mut(&mut material.scalar_roughness),
+    );
+    unbind_scalar_uniforms_from_shader_program(
+        program_handle,
+        std::slice::from_mut(&mut material.scalar_metalness),
+    );
+}
+
+pub fn bind_shader_program_to_texture(
+    program: &shader::ShaderProgram,
+    sampler: &mut model::TextureSampler,
+) {
+    if let Some(program_texture) = program
+        .samplers
+        .iter()
+        .find(|x| x.name == sampler.texture.name)
+    {
+        sampler.bindings.push(model::SamplerProgramBinding {
+            binding: program_texture.binding,
+            program: program.handle,
+        });
+    } else {
+        log::log_warning(format!(
+            "Failed to find sampler with name: '{}' in shader program id: '{}' name: '{}'",
+            sampler.texture.name, program.handle, program.name
+        ))
+    }
+}
+
+pub fn unbind_shader_program_from_texture(
+    program_handle: u32,
+    sampler: &mut model::TextureSampler,
+) {
+    sampler.bindings.retain(|b| b.program == program_handle);
 }
 
 fn bind_scalar_uniforms_to_shader_program<T>(
@@ -399,6 +595,15 @@ fn bind_scalar_uniforms_to_shader_program<T>(
                 uniform.name, program.handle, program.name
             ));
         }
+    }
+}
+
+fn unbind_scalar_uniforms_from_shader_program<T>(program_handle: u32, uniforms: &mut [Uniform<T>]) {
+    for uniform in uniforms.iter_mut() {
+        uniform
+            .data_location
+            .locations
+            .retain(|l| l.program != program_handle);
     }
 }
 
@@ -444,14 +649,27 @@ fn bind_scalar_per_model_uniforms_to_shader_program<T>(
     }
 }
 
-fn bind_texture2d_to_shader_program(
+fn unbind_scalar_per_model_uniforms_from_shader_program<T>(
+    program_handle: u32,
+    uniforms: &mut Vec<PerModelUnifrom<T>>,
+) {
+    for uniform in uniforms {
+        for data_location in &mut uniform.data_locations {
+            data_location
+                .locations
+                .retain(|l| l.program != program_handle);
+        }
+    }
+}
+
+fn bind_texture_samplers_to_shader_program(
     program: &shader::ShaderProgram,
-    textures: &mut [model::Sampler2d],
+    textures: &mut [model::TextureSampler],
 ) {
     assert!(
         textures
             .iter()
-            .find(|&sampler2d| sampler2d
+            .find(|&sampler| sampler
                 .bindings
                 .iter()
                 .find(|&binding| binding.program == program.handle)
@@ -462,7 +680,7 @@ fn bind_texture2d_to_shader_program(
 
     for texture in textures.iter_mut() {
         if let Some(program_sampler) = program
-            .sampler_2d
+            .samplers
             .iter()
             .find(|x| x.name == texture.texture.name)
         {
@@ -472,14 +690,17 @@ fn bind_texture2d_to_shader_program(
             });
         } else {
             log::log_warning(format!(
-                "Failed to find '{}' sampler2d location in program id: '{}' name: '{}'",
+                "Failed to find '{}' sampler location in program id: '{}' name: '{}'",
                 texture.texture.name, program.handle, program.name
             ));
         }
     }
 }
 
-fn unbind_texture2d_from_shader_program(program_handle: u32, textures: &mut [model::Sampler2d]) {
+fn unbind_texture_samplers_from_shader_program(
+    program_handle: u32,
+    textures: &mut [model::TextureSampler],
+) {
     for texture in textures.iter_mut() {
         texture.bindings.retain(|b| b.program != program_handle);
     }

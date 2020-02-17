@@ -1,15 +1,15 @@
 use crate::buffer;
-use crate::log;
 use crate::math;
-use crate::shader;
+use crate::technique;
 use crate::texture;
 use std::mem::size_of;
-use std::ptr::null;
 use std::vec::Vec;
 
 pub type Vertices = Vec<math::Vec3f>;
 pub type Indices = Vec<math::Vec1u>;
 pub type Normals = Vec<math::Vec3f>;
+pub type Tangents = Vec<math::Vec3f>;
+pub type Bitangents = Vec<math::Vec3f>;
 pub type UVs = Vec<math::Vec2f>;
 
 #[derive(Clone)]
@@ -26,6 +26,8 @@ pub struct HostMesh {
     pub material_index: usize,
     pub vertices: Vertices,
     pub normals: Normals,
+    pub tangents: Tangents,
+    pub bitangents: Bitangents,
     pub uvs: UVs,
     pub indices: Indices,
 }
@@ -33,11 +35,22 @@ pub struct HostMesh {
 #[derive(Clone)]
 pub struct HostMaterial {
     pub name: String,
+
+    pub albedo_available: bool,
+    pub normal_available: bool,
+    pub bump_available: bool,
+    pub metallic_available: bool,
+    pub roughness_available: bool,
+
     pub albedo_texture: Option<texture::HostTexture>,
     pub normal_texture: Option<texture::HostTexture>,
     pub bump_texture: Option<texture::HostTexture>,
     pub metallic_texture: Option<texture::HostTexture>,
     pub roughness_texture: Option<texture::HostTexture>,
+
+    pub scalar_albedo: math::Vec3f,
+    pub scalar_roughness: math::Vec1f,
+    pub scalar_metalness: math::Vec1f,
 }
 
 #[derive(Clone)]
@@ -63,18 +76,28 @@ pub struct SamplerProgramBinding {
 }
 
 #[derive(Clone)]
-pub struct Sampler2d {
+pub struct TextureSampler {
     pub bindings: Vec<SamplerProgramBinding>,
     pub texture: texture::DeviceTexture,
 }
 
 #[derive(Clone)]
 pub struct DeviceMaterial {
-    pub albedo_texture: Option<Sampler2d>,
-    pub normal_texture: Option<Sampler2d>,
-    pub bump_texture: Option<Sampler2d>,
-    pub metallic_texture: Option<Sampler2d>,
-    pub roughness_texture: Option<Sampler2d>,
+    pub albedo_available: technique::Uniform<math::Vec1u>,
+    pub normal_available: technique::Uniform<math::Vec1u>,
+    pub bump_available: technique::Uniform<math::Vec1u>,
+    pub metallic_available: technique::Uniform<math::Vec1u>,
+    pub roughness_available: technique::Uniform<math::Vec1u>,
+
+    pub albedo_texture: Option<TextureSampler>,
+    pub normal_texture: Option<TextureSampler>,
+    pub bump_texture: Option<TextureSampler>,
+    pub metallic_texture: Option<TextureSampler>,
+    pub roughness_texture: Option<TextureSampler>,
+
+    pub scalar_albedo: technique::Uniform<math::Vec3f>,
+    pub scalar_roughness: technique::Uniform<math::Vec1f>,
+    pub scalar_metalness: technique::Uniform<math::Vec1f>,
 }
 
 #[derive(Clone)]
@@ -87,14 +110,18 @@ pub fn create_host_mesh(
     material_index: usize,
     vertices: Vertices,
     normals: Normals,
+    tangents: Tangents,
+    bitangents: Bitangents,
     uvs: UVs,
     indices: Indices,
 ) -> HostMesh {
     HostMesh {
-        attributes: create_model_attributes(&vertices, &normals, &uvs),
+        attributes: create_model_attributes(&vertices, &normals, &tangents, &bitangents, &uvs),
         material_index,
         vertices,
         normals,
+        tangents,
+        bitangents,
         uvs,
         indices,
     }
@@ -114,104 +141,12 @@ pub fn create_device_model(host_model: &HostModel) -> DeviceModel {
     DeviceModel { meshes, materials }
 }
 
-pub fn bind_device_mesh_to_shader_program(mesh: &DeviceMesh, program: &shader::ShaderProgram) {
-    assert!(
-        mesh.vbos.len() == mesh.attributes.len(),
-        "DeviceModel is invalid! There must be Attribute for each VBO.",
-    );
-
-    for program_attribute in &program.attributes {
-        for (i, device_mesh_attribute) in mesh.attributes.iter().enumerate() {
-            if device_mesh_attribute.name == program_attribute.name {
-                let vbo = mesh.vbos[i];
-                unsafe {
-                    gl::BindVertexArray(mesh.vao);
-                    gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
-                    gl::EnableVertexAttribArray(program_attribute.location);
-                    gl::VertexAttribPointer(
-                        program_attribute.location,
-                        device_mesh_attribute.dimensions,
-                        device_mesh_attribute.data_type,
-                        gl::FALSE,
-                        device_mesh_attribute.stride,
-                        null(),
-                    );
-                }
-            }
-        }
-
-        unsafe {
-            gl::BindVertexArray(0);
-            gl::BindBuffer(gl::ARRAY_BUFFER, 0);
-        }
-    }
-}
-
-pub fn bind_shader_program_to_material(
-    material: &mut DeviceMaterial,
-    program: &shader::ShaderProgram,
-) {
-    if let Some(sampler2d) = &mut material.albedo_texture {
-        bind_shader_program_to_texture(program, sampler2d);
-    }
-    if let Some(sampler2d) = &mut material.normal_texture {
-        bind_shader_program_to_texture(program, sampler2d);
-    }
-    if let Some(sampler2d) = &mut material.bump_texture {
-        bind_shader_program_to_texture(program, sampler2d);
-    }
-    if let Some(sampler2d) = &mut material.metallic_texture {
-        bind_shader_program_to_texture(program, sampler2d);
-    }
-    if let Some(sampler2d) = &mut material.roughness_texture {
-        bind_shader_program_to_texture(program, sampler2d);
-    }
-}
-
-pub fn unbind_shader_program_from_material(material: &mut DeviceMaterial, program_handle: u32) {
-    if let Some(sampler2d) = &mut material.albedo_texture {
-        unbind_shader_program_from_texture(program_handle, sampler2d);
-    }
-    if let Some(sampler2d) = &mut material.normal_texture {
-        unbind_shader_program_from_texture(program_handle, sampler2d);
-    }
-    if let Some(sampler2d) = &mut material.bump_texture {
-        unbind_shader_program_from_texture(program_handle, sampler2d);
-    }
-    if let Some(sampler2d) = &mut material.metallic_texture {
-        unbind_shader_program_from_texture(program_handle, sampler2d);
-    }
-    if let Some(sampler2d) = &mut material.roughness_texture {
-        unbind_shader_program_from_texture(program_handle, sampler2d);
-    }
-}
-
-pub fn bind_shader_program_to_texture(program: &shader::ShaderProgram, sampler2d: &mut Sampler2d) {
-    if let Some(program_texture) = program
-        .sampler_2d
-        .iter()
-        .find(|x| x.name == sampler2d.texture.name)
-    {
-        sampler2d.bindings.push(SamplerProgramBinding {
-            binding: program_texture.binding,
-            program: program.handle,
-        });
-    } else {
-        log::log_warning(format!(
-            "Failed to find 2d sampler with name: '{}' in shader program id: '{}' name: '{}'",
-            sampler2d.texture.name, program.handle, program.name
-        ))
-    }
-}
-
-pub fn unbind_shader_program_from_texture(program_handle: u32, sampler2d: &mut Sampler2d) {
-    sampler2d.bindings.retain(|b| b.program == program_handle);
-}
-
 #[allow(clippy::ptr_arg)]
 fn create_model_attributes(
     vertices: &Vertices,
     normals: &Normals,
+    tangents: &Tangents,
+    bitangents: &Bitangents,
     uvs: &UVs,
 ) -> Vec<MeshAttribute> {
     assert!(!vertices.is_empty(), "Model must always have vertices.");
@@ -223,6 +158,15 @@ fn create_model_attributes(
     }
     if !normals.is_empty() {
         attributes.push(create_model_attribute(&normals, "aNormal".to_string()));
+    }
+    if !tangents.is_empty() {
+        attributes.push(create_model_attribute(&tangents, "aTangent".to_string()));
+    }
+    if !bitangents.is_empty() {
+        attributes.push(create_model_attribute(
+            &bitangents,
+            "aBitangent".to_string(),
+        ));
     }
     if !uvs.is_empty() {
         attributes.push(create_model_attribute(&uvs, "aUV".to_string()));
@@ -246,6 +190,37 @@ where
 
 fn create_device_material(material: &HostMaterial) -> DeviceMaterial {
     DeviceMaterial {
+        albedo_available: technique::create_new_uniform(
+            "uAlbedoAvailableVec1u",
+            math::Vec1u {
+                x: material.albedo_available as u32,
+            },
+        ),
+        normal_available: technique::create_new_uniform(
+            "uNormalAvailableVec1u",
+            math::Vec1u {
+                x: material.normal_available as u32,
+            },
+        ),
+        bump_available: technique::create_new_uniform(
+            "uBumpAvailableVec1u",
+            math::Vec1u {
+                x: material.bump_available as u32,
+            },
+        ),
+        metallic_available: technique::create_new_uniform(
+            "uMetallicAvailableVec1u",
+            math::Vec1u {
+                x: material.metallic_available as u32,
+            },
+        ),
+        roughness_available: technique::create_new_uniform(
+            "uRoughnessAvailableVec1u",
+            math::Vec1u {
+                x: material.roughness_available as u32,
+            },
+        ),
+
         albedo_texture: create_material_texture(
             "uAlbedoMapSampler2D".to_string(),
             &material.albedo_texture,
@@ -271,6 +246,16 @@ fn create_device_material(material: &HostMaterial) -> DeviceMaterial {
             &material.roughness_texture,
             &texture::create_color_device_texture_descriptor(&material.roughness_texture),
         ),
+
+        scalar_albedo: technique::create_new_uniform("uScalarAlbedoVec3f", material.scalar_albedo),
+        scalar_roughness: technique::create_new_uniform(
+            "uScalarRoughnessVec1f",
+            material.scalar_roughness,
+        ),
+        scalar_metalness: technique::create_new_uniform(
+            "uScalarMetalnessVec1f",
+            material.scalar_metalness,
+        ),
     }
 }
 
@@ -278,11 +263,11 @@ fn create_material_texture(
     name: String,
     host_texture: &Option<texture::HostTexture>,
     desc: &Option<texture::DeviceTextureDescriptor>,
-) -> Option<Sampler2d> {
-    let mut result: Option<Sampler2d> = None;
+) -> Option<TextureSampler> {
+    let mut result: Option<TextureSampler> = None;
 
     if let (Some(host_texture), Some(desc)) = (host_texture, desc) {
-        result = Some(Sampler2d {
+        result = Some(TextureSampler {
             bindings: Vec::new(),
             texture: texture::create_device_texture(name, host_texture, desc),
         });
@@ -337,6 +322,26 @@ fn create_device_mesh_vbos(mesh: &HostMesh) -> Vec<u32> {
                 gl::ARRAY_BUFFER,
             ))
             .expect("Failed to create normal buffer."),
+        );
+    }
+
+    if !mesh.tangents.is_empty() {
+        vbos.push(
+            buffer::create_buffer(&buffer::create_buffer_descriptor(
+                &mesh.tangents,
+                gl::ARRAY_BUFFER,
+            ))
+            .expect("Failed to create tangent buffer."),
+        );
+    }
+
+    if !mesh.bitangents.is_empty() {
+        vbos.push(
+            buffer::create_buffer(&buffer::create_buffer_descriptor(
+                &mesh.bitangents,
+                gl::ARRAY_BUFFER,
+            ))
+            .expect("Failed to create bitangent buffer."),
         );
     }
 

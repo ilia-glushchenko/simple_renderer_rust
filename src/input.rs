@@ -77,7 +77,7 @@ pub fn update_cursor_mode(window: &mut app::Window, input_data: &mut Data) {
 }
 
 pub fn update_camera(camera: &mut camera::Camera, window: &app::Window, input_data: &Data) {
-    let speed: f32 = 50.;
+    let speed: f32 = 0.01;
     let world_forward = math::Vec4f {
         x: 0.,
         y: 0.,

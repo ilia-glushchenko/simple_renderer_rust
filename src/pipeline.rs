@@ -9,6 +9,13 @@ pub fn create_render_pipeline(
     techniques: &mut technique::TechniqueMap,
     window: &app::Window,
 ) -> Result<Vec<pass::Pass>, String> {
+    let clear_color = math::Vec4f {
+        x: 0.,
+        y: 0.,
+        z: 0.,
+        w: 1.,
+    };
+
     let depth_pre_pass_descriptor = pass::PassDescriptor {
         name: "depth pre-pass".to_string(),
         program: shader::HostShaderProgramDescriptor {
@@ -40,8 +47,8 @@ pub fn create_render_pipeline(
         name: "lighting".to_string(),
         program: shader::HostShaderProgramDescriptor {
             name: "lighting".to_string(),
-            vert_shader_file_path: "shaders/pass_through.vert".to_string(),
-            frag_shader_file_path: "shaders/pass_through.frag".to_string(),
+            vert_shader_file_path: "shaders/lighting.vert".to_string(),
+            frag_shader_file_path: "shaders/lighting.frag".to_string(),
         },
         techniques: vec![technique::Techniques::MVP],
         attachments: vec![
@@ -58,12 +65,7 @@ pub fn create_render_pipeline(
                 height: window.height,
             },
             pass::PassAttachmentDescriptor {
-                flavor: pass::PassAttachmentType::Color(math::Vec4f {
-                    x: 1.,
-                    y: 1.,
-                    z: 1.,
-                    w: 1.,
-                }),
+                flavor: pass::PassAttachmentType::Color(clear_color),
                 source: pass::PassAttachmentSource::Local,
                 clear: true,
                 write: true,
@@ -82,7 +84,52 @@ pub fn create_render_pipeline(
     let lighting_pass = lighting_pass.unwrap();
     pass::bind_technique_to_render_pass(techniques, &lighting_pass);
 
-    Ok(vec![depth_pre_pass, lighting_pass])
+    let skybox_pass_descriptor = pass::PassDescriptor {
+        name: "Skybox Pass".to_string(),
+        program: shader::HostShaderProgramDescriptor {
+            name: "skybox".to_string(),
+            vert_shader_file_path: "shaders/skybox.vert".to_string(),
+            frag_shader_file_path: "shaders/skybox.frag".to_string(),
+        },
+        techniques: vec![technique::Techniques::Skybox],
+        attachments: vec![
+            pass::PassAttachmentDescriptor {
+                flavor: pass::PassAttachmentType::Depth(1., gl::LESS),
+                source: pass::PassAttachmentSource::Remote(pass::RemotePassAttachmentSource {
+                    pipeline_index: 0,
+                    attachment_index: 0,
+                    device_texture: depth_pre_pass.attachments[0].texture.clone(),
+                }),
+                clear: false,
+                write: false,
+                width: window.width,
+                height: window.height,
+            },
+            pass::PassAttachmentDescriptor {
+                flavor: pass::PassAttachmentType::Color(clear_color),
+                source: pass::PassAttachmentSource::Remote(pass::RemotePassAttachmentSource {
+                    pipeline_index: 1,
+                    attachment_index: 1,
+                    device_texture: lighting_pass.attachments[1].texture.clone(),
+                }),
+                clear: false,
+                write: true,
+                width: window.width,
+                height: window.height,
+            },
+        ],
+        dependencies: Vec::new(),
+        width: window.width,
+        height: window.height,
+    };
+    let skybox_pass = pass::create_render_pass(skybox_pass_descriptor);
+    if let Err(msg) = skybox_pass {
+        return Err(msg);
+    }
+    let skybox_pass = skybox_pass.unwrap();
+    pass::bind_technique_to_render_pass(techniques, &skybox_pass);
+
+    Ok(vec![depth_pre_pass, lighting_pass, skybox_pass])
 }
 
 pub fn delete_render_pipeline(
@@ -127,14 +174,14 @@ pub fn reload_render_pipeline(pipeline: &mut Vec<pass::Pass>) -> Result<(), Stri
     for (i, pass) in pipeline.iter_mut().enumerate() {
         //Delete old if success
         for dependency in &mut pass.desc.dependencies {
-            model::unbind_shader_program_from_texture(pass.program.handle, dependency);
+            technique::unbind_shader_program_from_texture(pass.program.handle, dependency);
         }
         shader::delete_shader_program(&mut pass.program);
 
         //Assign new
         pass.program = new_pipeline_programs[i].clone();
         for dependency in &mut pass.desc.dependencies {
-            model::bind_shader_program_to_texture(&pass.program, dependency);
+            technique::bind_shader_program_to_texture(&pass.program, dependency);
         }
     }
 

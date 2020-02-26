@@ -1,7 +1,7 @@
 use crate::buffer;
 use crate::math;
-use crate::technique;
-use crate::texture;
+use crate::tech;
+use crate::tex;
 use std::mem::size_of;
 use std::vec::Vec;
 
@@ -42,11 +42,11 @@ pub struct HostMaterial {
     pub metallic_available: bool,
     pub roughness_available: bool,
 
-    pub albedo_texture: Option<texture::HostTexture>,
-    pub normal_texture: Option<texture::HostTexture>,
-    pub bump_texture: Option<texture::HostTexture>,
-    pub metallic_texture: Option<texture::HostTexture>,
-    pub roughness_texture: Option<texture::HostTexture>,
+    pub albedo_texture: Option<tex::HostTexture>,
+    pub normal_texture: Option<tex::HostTexture>,
+    pub bump_texture: Option<tex::HostTexture>,
+    pub metallic_texture: Option<tex::HostTexture>,
+    pub roughness_texture: Option<tex::HostTexture>,
 
     pub scalar_albedo: math::Vec3f,
     pub scalar_roughness: math::Vec1f,
@@ -78,16 +78,16 @@ pub struct SamplerProgramBinding {
 #[derive(Clone)]
 pub struct TextureSampler {
     pub bindings: Vec<SamplerProgramBinding>,
-    pub texture: texture::DeviceTexture,
+    pub texture: tex::DeviceTexture,
 }
 
 #[derive(Clone)]
 pub struct DeviceMaterial {
-    pub albedo_available: technique::Uniform<math::Vec1u>,
-    pub normal_available: technique::Uniform<math::Vec1u>,
-    pub bump_available: technique::Uniform<math::Vec1u>,
-    pub metallic_available: technique::Uniform<math::Vec1u>,
-    pub roughness_available: technique::Uniform<math::Vec1u>,
+    pub albedo_available: tech::Uniform<math::Vec1u>,
+    pub normal_available: tech::Uniform<math::Vec1u>,
+    pub bump_available: tech::Uniform<math::Vec1u>,
+    pub metallic_available: tech::Uniform<math::Vec1u>,
+    pub roughness_available: tech::Uniform<math::Vec1u>,
 
     pub albedo_texture: Option<TextureSampler>,
     pub normal_texture: Option<TextureSampler>,
@@ -95,9 +95,9 @@ pub struct DeviceMaterial {
     pub metallic_texture: Option<TextureSampler>,
     pub roughness_texture: Option<TextureSampler>,
 
-    pub scalar_albedo: technique::Uniform<math::Vec3f>,
-    pub scalar_roughness: technique::Uniform<math::Vec1f>,
-    pub scalar_metalness: technique::Uniform<math::Vec1f>,
+    pub scalar_albedo: tech::Uniform<math::Vec3f>,
+    pub scalar_roughness: tech::Uniform<math::Vec1f>,
+    pub scalar_metalness: tech::Uniform<math::Vec1f>,
 }
 
 #[derive(Clone)]
@@ -139,6 +139,16 @@ pub fn create_device_model(host_model: &HostModel) -> DeviceModel {
     }
 
     DeviceModel { meshes, materials }
+}
+
+pub fn delete_device_model(device_model: DeviceModel) {
+    for device_material in device_model.materials {
+        delete_device_material(device_material);
+    }
+
+    for device_mesh in device_model.meshes {
+        delete_device_mesh(device_mesh);
+    }
 }
 
 #[allow(clippy::ptr_arg)]
@@ -190,31 +200,31 @@ where
 
 fn create_device_material(material: &HostMaterial) -> DeviceMaterial {
     DeviceMaterial {
-        albedo_available: technique::create_new_uniform(
+        albedo_available: tech::create_new_uniform(
             "uAlbedoAvailableVec1u",
             math::Vec1u {
                 x: material.albedo_available as u32,
             },
         ),
-        normal_available: technique::create_new_uniform(
+        normal_available: tech::create_new_uniform(
             "uNormalAvailableVec1u",
             math::Vec1u {
                 x: material.normal_available as u32,
             },
         ),
-        bump_available: technique::create_new_uniform(
+        bump_available: tech::create_new_uniform(
             "uBumpAvailableVec1u",
             math::Vec1u {
                 x: material.bump_available as u32,
             },
         ),
-        metallic_available: technique::create_new_uniform(
+        metallic_available: tech::create_new_uniform(
             "uMetallicAvailableVec1u",
             math::Vec1u {
                 x: material.metallic_available as u32,
             },
         ),
-        roughness_available: technique::create_new_uniform(
+        roughness_available: tech::create_new_uniform(
             "uRoughnessAvailableVec1u",
             math::Vec1u {
                 x: material.roughness_available as u32,
@@ -224,52 +234,70 @@ fn create_device_material(material: &HostMaterial) -> DeviceMaterial {
         albedo_texture: create_material_texture(
             "uAlbedoMapSampler2D".to_string(),
             &material.albedo_texture,
-            &texture::create_color_device_texture_descriptor(&material.albedo_texture),
+            &tex::create_color_device_texture_descriptor(&material.albedo_texture),
         ),
         normal_texture: create_material_texture(
             "uNormalMapSampler2D".to_string(),
             &material.normal_texture,
-            &texture::create_color_device_texture_descriptor(&material.normal_texture),
+            &tex::create_color_device_texture_descriptor(&material.normal_texture),
         ),
         bump_texture: create_material_texture(
             "uBumpMapSampler2D".to_string(),
             &material.bump_texture,
-            &texture::create_color_device_texture_descriptor(&material.bump_texture),
+            &tex::create_color_device_texture_descriptor(&material.bump_texture),
         ),
         metallic_texture: create_material_texture(
             "uMetallicSampler2D".to_string(),
             &material.metallic_texture,
-            &texture::create_color_device_texture_descriptor(&material.metallic_texture),
+            &tex::create_color_device_texture_descriptor(&material.metallic_texture),
         ),
         roughness_texture: create_material_texture(
             "uRoughnessSampler2D".to_string(),
             &material.roughness_texture,
-            &texture::create_color_device_texture_descriptor(&material.roughness_texture),
+            &tex::create_color_device_texture_descriptor(&material.roughness_texture),
         ),
 
-        scalar_albedo: technique::create_new_uniform("uScalarAlbedoVec3f", material.scalar_albedo),
-        scalar_roughness: technique::create_new_uniform(
+        scalar_albedo: tech::create_new_uniform("uScalarAlbedoVec3f", material.scalar_albedo),
+        scalar_roughness: tech::create_new_uniform(
             "uScalarRoughnessVec1f",
             material.scalar_roughness,
         ),
-        scalar_metalness: technique::create_new_uniform(
+        scalar_metalness: tech::create_new_uniform(
             "uScalarMetalnessVec1f",
             material.scalar_metalness,
         ),
     }
 }
 
+fn delete_device_material(device_material: DeviceMaterial) {
+    if let Some(sampler) = device_material.albedo_texture {
+        tex::delete_device_texture(&sampler.texture);
+    }
+    if let Some(sampler) = device_material.normal_texture {
+        tex::delete_device_texture(&sampler.texture);
+    }
+    if let Some(sampler) = device_material.bump_texture {
+        tex::delete_device_texture(&sampler.texture);
+    }
+    if let Some(sampler) = device_material.metallic_texture {
+        tex::delete_device_texture(&sampler.texture);
+    }
+    if let Some(sampler) = device_material.roughness_texture {
+        tex::delete_device_texture(&sampler.texture);
+    }
+}
+
 fn create_material_texture(
     name: String,
-    host_texture: &Option<texture::HostTexture>,
-    desc: &Option<texture::DeviceTextureDescriptor>,
+    host_texture: &Option<tex::HostTexture>,
+    desc: &Option<tex::DeviceTextureDescriptor>,
 ) -> Option<TextureSampler> {
     let mut result: Option<TextureSampler> = None;
 
     if let (Some(host_texture), Some(desc)) = (host_texture, desc) {
         result = Some(TextureSampler {
             bindings: Vec::new(),
-            texture: texture::create_device_texture(name, host_texture, desc),
+            texture: tex::create_device_texture(name, host_texture, desc),
         });
     }
 
@@ -300,6 +328,14 @@ fn create_device_mesh(mesh: &HostMesh) -> DeviceMesh {
         .expect("Failed to create index buffer."),
         material_index: mesh.material_index,
     }
+}
+
+fn delete_device_mesh(mesh: DeviceMesh) {
+    unsafe {
+        gl::DeleteVertexArrays(1, &mesh.vao);
+        gl::DeleteBuffers(mesh.vbos.len() as i32, mesh.vbos.as_ptr());
+        gl::DeleteBuffers(1, &mesh.indices);
+    };
 }
 
 fn create_device_mesh_vbos(mesh: &HostMesh) -> Vec<u32> {

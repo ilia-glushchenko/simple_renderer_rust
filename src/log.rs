@@ -1,4 +1,4 @@
-use colored::*;
+use colored::Colorize;
 
 pub fn log_info(message: String) {
     println!("{}", message.blue());

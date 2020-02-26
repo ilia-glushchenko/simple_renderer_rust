@@ -3,18 +3,13 @@ use crate::math;
 use crate::model;
 use crate::pass;
 use crate::shader;
-use crate::technique;
+use crate::tech;
 
 pub fn create_render_pipeline(
-    techniques: &mut technique::TechniqueMap,
+    techniques: &mut tech::TechniqueMap,
     window: &app::Window,
 ) -> Result<Vec<pass::Pass>, String> {
-    let clear_color = math::Vec4f {
-        x: 0.,
-        y: 0.,
-        z: 0.,
-        w: 1.,
-    };
+    let clear_color = math::zero_vec4::<f32>();
 
     let depth_pre_pass_descriptor = pass::PassDescriptor {
         name: "depth pre-pass".to_string(),
@@ -23,10 +18,10 @@ pub fn create_render_pipeline(
             vert_shader_file_path: "shaders/depth_pre_pass.vert".to_string(),
             frag_shader_file_path: "shaders/depth_pre_pass.frag".to_string(),
         },
-        techniques: vec![technique::Techniques::MVP],
+        techniques: vec![tech::Techniques::MVP],
         attachments: vec![pass::PassAttachmentDescriptor {
             flavor: pass::PassAttachmentType::Depth(1., gl::LESS),
-            source: pass::PassAttachmentSource::Local,
+            source: pass::PassAttachmentSource::ThisPass,
             clear: true,
             write: true,
             width: window.width,
@@ -50,11 +45,11 @@ pub fn create_render_pipeline(
             vert_shader_file_path: "shaders/lighting.vert".to_string(),
             frag_shader_file_path: "shaders/lighting.frag".to_string(),
         },
-        techniques: vec![technique::Techniques::MVP],
+        techniques: vec![tech::Techniques::MVP],
         attachments: vec![
             pass::PassAttachmentDescriptor {
                 flavor: pass::PassAttachmentType::Depth(1., gl::EQUAL),
-                source: pass::PassAttachmentSource::Remote(pass::RemotePassAttachmentSource {
+                source: pass::PassAttachmentSource::OtherPass(pass::OtherPassAttachmentSource {
                     pipeline_index: 0,
                     attachment_index: 0,
                     device_texture: depth_pre_pass.attachments[0].texture.clone(),
@@ -66,7 +61,7 @@ pub fn create_render_pipeline(
             },
             pass::PassAttachmentDescriptor {
                 flavor: pass::PassAttachmentType::Color(clear_color),
-                source: pass::PassAttachmentSource::Local,
+                source: pass::PassAttachmentSource::ThisPass,
                 clear: true,
                 write: true,
                 width: window.width,
@@ -91,11 +86,11 @@ pub fn create_render_pipeline(
             vert_shader_file_path: "shaders/skybox.vert".to_string(),
             frag_shader_file_path: "shaders/skybox.frag".to_string(),
         },
-        techniques: vec![technique::Techniques::Skybox],
+        techniques: vec![tech::Techniques::Skybox],
         attachments: vec![
             pass::PassAttachmentDescriptor {
                 flavor: pass::PassAttachmentType::Depth(1., gl::LESS),
-                source: pass::PassAttachmentSource::Remote(pass::RemotePassAttachmentSource {
+                source: pass::PassAttachmentSource::OtherPass(pass::OtherPassAttachmentSource {
                     pipeline_index: 0,
                     attachment_index: 0,
                     device_texture: depth_pre_pass.attachments[0].texture.clone(),
@@ -107,7 +102,7 @@ pub fn create_render_pipeline(
             },
             pass::PassAttachmentDescriptor {
                 flavor: pass::PassAttachmentType::Color(clear_color),
-                source: pass::PassAttachmentSource::Remote(pass::RemotePassAttachmentSource {
+                source: pass::PassAttachmentSource::OtherPass(pass::OtherPassAttachmentSource {
                     pipeline_index: 1,
                     attachment_index: 1,
                     device_texture: lighting_pass.attachments[1].texture.clone(),
@@ -132,10 +127,7 @@ pub fn create_render_pipeline(
     Ok(vec![depth_pre_pass, lighting_pass, skybox_pass])
 }
 
-pub fn delete_render_pipeline(
-    techniques: &mut technique::TechniqueMap,
-    pipeline: &mut Vec<pass::Pass>,
-) {
+pub fn delete_render_pipeline(techniques: &mut tech::TechniqueMap, pipeline: &mut Vec<pass::Pass>) {
     for pass in pipeline.iter_mut() {
         pass::unbind_technique_from_render_pass(techniques, pass.program.handle);
         pass::delete_render_pass(pass);
@@ -144,7 +136,7 @@ pub fn delete_render_pipeline(
 
 pub fn is_render_pipeline_valid(
     pipeline: &Vec<pass::Pass>,
-    techniques: &technique::TechniqueMap,
+    techniques: &tech::TechniqueMap,
     device_model: &model::DeviceModel,
 ) -> Result<(), String> {
     for pass in pipeline {
@@ -174,14 +166,14 @@ pub fn reload_render_pipeline(pipeline: &mut Vec<pass::Pass>) -> Result<(), Stri
     for (i, pass) in pipeline.iter_mut().enumerate() {
         //Delete old if success
         for dependency in &mut pass.desc.dependencies {
-            technique::unbind_shader_program_from_texture(pass.program.handle, dependency);
+            tech::unbind_shader_program_from_texture(pass.program.handle, dependency);
         }
         shader::delete_shader_program(&mut pass.program);
 
         //Assign new
         pass.program = new_pipeline_programs[i].clone();
         for dependency in &mut pass.desc.dependencies {
-            technique::bind_shader_program_to_texture(&pass.program, dependency);
+            tech::bind_shader_program_to_texture(&pass.program, dependency);
         }
     }
 
@@ -191,11 +183,11 @@ pub fn reload_render_pipeline(pipeline: &mut Vec<pass::Pass>) -> Result<(), Stri
 pub fn resize_render_pipeline(window: &app::Window, pipeline: &mut Vec<pass::Pass>) {
     for i in 0..pipeline.len() {
         for j in 0..pipeline[i].attachments.len() {
-            if let pass::PassAttachmentSource::Remote(source) =
+            if let pass::PassAttachmentSource::OtherPass(source) =
                 pipeline[i].attachments[j].desc.source.clone()
             {
                 pipeline[i].attachments[j].desc.source =
-                    pass::PassAttachmentSource::Remote(pass::RemotePassAttachmentSource {
+                    pass::PassAttachmentSource::OtherPass(pass::OtherPassAttachmentSource {
                         pipeline_index: source.pipeline_index,
                         attachment_index: source.attachment_index,
                         device_texture: pipeline[source.pipeline_index].attachments

@@ -4,8 +4,8 @@ use crate::log;
 use crate::math;
 use crate::model;
 use crate::shader;
-use crate::technique;
-use crate::texture;
+use crate::tech;
+use crate::tex;
 use std::collections::HashMap;
 use std::ptr::null;
 
@@ -16,16 +16,16 @@ pub enum PassAttachmentType {
 }
 
 #[derive(Clone)]
-pub struct RemotePassAttachmentSource {
+pub struct OtherPassAttachmentSource {
     pub pipeline_index: usize,
     pub attachment_index: usize,
-    pub device_texture: texture::DeviceTexture,
+    pub device_texture: tex::DeviceTexture,
 }
 
 #[derive(Clone)]
 pub enum PassAttachmentSource {
-    Local,
-    Remote(RemotePassAttachmentSource),
+    ThisPass,
+    OtherPass(OtherPassAttachmentSource),
 }
 
 #[derive(Clone)]
@@ -40,7 +40,7 @@ pub struct PassAttachmentDescriptor {
 
 #[derive(Clone)]
 pub struct PassAttachment {
-    pub texture: texture::DeviceTexture,
+    pub texture: tex::DeviceTexture,
     pub desc: PassAttachmentDescriptor,
 }
 
@@ -48,7 +48,7 @@ pub struct PassAttachment {
 pub struct PassDescriptor {
     pub name: String,
     pub program: shader::HostShaderProgramDescriptor,
-    pub techniques: Vec<technique::Techniques>,
+    pub techniques: Vec<tech::Techniques>,
 
     pub attachments: Vec<PassAttachmentDescriptor>,
     pub dependencies: Vec<model::TextureSampler>,
@@ -61,7 +61,7 @@ pub struct PassDescriptor {
 pub struct Pass {
     pub name: String,
     pub program: shader::ShaderProgram,
-    pub techniques: Vec<technique::Techniques>,
+    pub techniques: Vec<tech::Techniques>,
     pub desc: PassDescriptor,
 
     pub attachments: Vec<PassAttachment>,
@@ -80,7 +80,7 @@ pub fn create_render_pass(mut desc: PassDescriptor) -> Result<Pass, String> {
     let device_program = device_program.unwrap();
 
     for dependency in &mut desc.dependencies {
-        technique::bind_shader_program_to_texture(&device_program, dependency);
+        tech::bind_shader_program_to_texture(&device_program, dependency);
     }
 
     let attachments = create_pass_attachments(&desc.attachments);
@@ -109,9 +109,147 @@ pub fn delete_render_pass(pass: &mut Pass) {
     pass.dependencies.clear();
 }
 
+pub fn create_framebuffer_object(attachments: &Vec<PassAttachment>) -> Result<u32, String> {
+    let mut handle: u32 = 0;
+    unsafe { gl::GenFramebuffers(1, &mut handle as *mut u32) };
+    if handle == 0 {
+        return Result::Err("Failed to create framebuffer object".to_string());
+    }
+
+    unsafe { gl::BindFramebuffer(gl::FRAMEBUFFER, handle) };
+    let mut color_attachment_count: u32 = 0;
+    let mut depth_attachment_count: u32 = 0;
+    let mut draw_attachments: Vec<u32> = Vec::new();
+
+    for attachment in attachments {
+        unsafe { gl::ActiveTexture(gl::TEXTURE0) };
+        unsafe { gl::BindTexture(gl::TEXTURE_2D, attachment.texture.handle) };
+
+        let attachment_texture_handle = match &attachment.desc.source {
+            PassAttachmentSource::ThisPass => attachment.texture.handle,
+            PassAttachmentSource::OtherPass(source) => source.device_texture.handle,
+        };
+
+        match attachment.desc.flavor {
+            PassAttachmentType::Color(_) => {
+                let attachment_index =
+                    (gl::COLOR_ATTACHMENT0 as u32 + color_attachment_count) as gl::types::GLenum;
+
+                unsafe {
+                    gl::FramebufferTexture2D(
+                        gl::FRAMEBUFFER,
+                        attachment_index,
+                        gl::TEXTURE_2D,
+                        attachment_texture_handle,
+                        0,
+                    );
+                }
+                draw_attachments.push(attachment_index);
+
+                color_attachment_count += 1;
+            }
+            PassAttachmentType::Depth(_, _) => {
+                assert!(
+                    depth_attachment_count == 0,
+                    "There can only be 1 depth attachment"
+                );
+                unsafe {
+                    gl::FramebufferTexture2D(
+                        gl::FRAMEBUFFER,
+                        gl::DEPTH_ATTACHMENT,
+                        gl::TEXTURE_2D,
+                        attachment_texture_handle,
+                        0,
+                    );
+                }
+                depth_attachment_count += 1;
+            }
+        }
+    }
+
+    unsafe { gl::DrawBuffers(draw_attachments.len() as i32, draw_attachments.as_ptr()) };
+    if unsafe { gl::CheckFramebufferStatus(gl::FRAMEBUFFER) != gl::FRAMEBUFFER_COMPLETE } {
+        return Result::Err("Framebuffer is not complete".to_string());
+    }
+
+    Result::Ok(handle)
+}
+
+pub fn bind_device_model_to_render_pass(device_model: &mut model::DeviceModel, pass: &Pass) {
+    for device_mesh in &mut device_model.meshes {
+        tech::bind_device_mesh_to_shader_program(device_mesh, &pass.program);
+    }
+    for device_material in &mut device_model.materials {
+        tech::bind_shader_program_to_material(device_material, &pass.program);
+    }
+}
+
+pub fn unbind_device_model_from_render_pass(
+    device_model: &mut model::DeviceModel,
+    pass_program_handle: u32,
+) {
+    for device_material in &mut device_model.materials {
+        tech::unbind_shader_program_from_material(device_material, pass_program_handle);
+    }
+}
+
+pub fn bind_technique_to_render_pass(techniques: &mut tech::TechniqueMap, pass: &Pass) {
+    for (_, technique) in techniques.iter_mut() {
+        tech::bind_shader_program_to_technique(technique, &pass.program);
+    }
+}
+
+pub fn unbind_technique_from_render_pass(
+    techniques: &mut tech::TechniqueMap,
+    pass_program_handle: u32,
+) {
+    for (_, technique) in techniques.iter_mut() {
+        tech::unbind_shader_program_from_technique(technique, pass_program_handle);
+    }
+}
+
+pub fn resize_render_pass(pass: &mut Pass, width: u32, height: u32) {
+    if width > 0 && height > 0 && (width != pass.width || height != pass.height) {
+        let attachment_descriptors: Vec<PassAttachmentDescriptor> = pass
+            .attachments
+            .iter()
+            .map(|attachment| {
+                let mut desc = attachment.desc.clone();
+
+                if desc.width == pass.width && desc.height == pass.height {
+                    desc.width = width;
+                    desc.height = height;
+                } else {
+                    log::log_warning(
+                        "Failed to resize custom size frame buffer attachment!".to_string(),
+                    );
+                }
+
+                return desc;
+            })
+            .collect();
+
+        let attachments = create_pass_attachments(&attachment_descriptors);
+        let fbo = create_framebuffer_object(&attachments);
+        if let Result::Ok(fbo) = fbo {
+            unsafe { gl::DeleteFramebuffers(1, &pass.fbo as *const u32) };
+            delete_pass_attachments(&mut pass.attachments);
+
+            pass.attachments = attachments;
+            pass.fbo = fbo;
+            pass.width = width;
+            pass.height = height;
+        }
+
+        if let Err(msg) = fbo {
+            log::log_error(format!("Failed to resize pass {0}", msg));
+        }
+    }
+}
+
 pub fn is_render_pass_valid(
     pass: &Pass,
-    techniques: &technique::TechniqueMap,
+    techniques: &tech::TechniqueMap,
     device_model: &model::DeviceModel,
 ) -> Result<(), String> {
     // Check scalar uniforms
@@ -280,81 +418,9 @@ pub fn is_render_pass_valid(
     Ok(())
 }
 
-pub fn bind_device_model_to_render_pass(device_model: &mut model::DeviceModel, pass: &Pass) {
-    for device_mesh in &mut device_model.meshes {
-        technique::bind_device_mesh_to_shader_program(device_mesh, &pass.program);
-    }
-    for device_material in &mut device_model.materials {
-        technique::bind_shader_program_to_material(device_material, &pass.program);
-    }
-}
-
-pub fn unbind_device_model_from_render_pass(
-    device_model: &mut model::DeviceModel,
-    pass_program_handle: u32,
-) {
-    for device_material in &mut device_model.materials {
-        technique::unbind_shader_program_from_material(device_material, pass_program_handle);
-    }
-}
-
-pub fn bind_technique_to_render_pass(techniques: &mut technique::TechniqueMap, pass: &Pass) {
-    for (_, technique) in techniques.iter_mut() {
-        technique::bind_shader_program_to_technique(technique, &pass.program);
-    }
-}
-
-pub fn unbind_technique_from_render_pass(
-    techniques: &mut technique::TechniqueMap,
-    pass_program_handle: u32,
-) {
-    for (_, technique) in techniques.iter_mut() {
-        technique::unbind_shader_program_from_technique(technique, pass_program_handle);
-    }
-}
-
-pub fn resize_render_pass(pass: &mut Pass, width: u32, height: u32) {
-    if width > 0 && height > 0 && (width != pass.width || height != pass.height) {
-        let attachment_descriptors: Vec<PassAttachmentDescriptor> = pass
-            .attachments
-            .iter()
-            .map(|attachment| {
-                let mut desc = attachment.desc.clone();
-
-                if desc.width == pass.width && desc.height == pass.height {
-                    desc.width = width;
-                    desc.height = height;
-                } else {
-                    log::log_warning(
-                        "Failed to resize custom size frame buffer attachment!".to_string(),
-                    );
-                }
-
-                return desc;
-            })
-            .collect();
-
-        let attachments = create_pass_attachments(&attachment_descriptors);
-        let fbo = create_framebuffer_object(&attachments);
-        if let Result::Ok(fbo) = fbo {
-            unsafe { gl::DeleteFramebuffers(1, &pass.fbo as *const u32) };
-            delete_pass_attachments(&mut pass.attachments);
-
-            pass.attachments = attachments;
-            pass.fbo = fbo;
-            pass.width = width;
-            pass.height = height;
-        }
-
-        if let Err(msg) = fbo {
-            log::log_error(format!("Failed to resize pass {0}", msg));
-        }
-    }
-}
-
 pub fn execute_render_pass(
     pass: &Pass,
-    techniques: &HashMap<technique::Techniques, technique::Technique>,
+    techniques: &HashMap<tech::Techniques, tech::Technique>,
     model: &model::DeviceModel,
 ) {
     let mut clear_mask: gl::types::GLbitfield = 0;
@@ -402,7 +468,7 @@ pub fn execute_render_pass(
     for technique_name in &pass.techniques {
         let technique = &techniques.get(&technique_name).unwrap();
 
-        technique::update_per_frame_uniforms(&pass.program, &technique.per_frame_uniforms);
+        tech::update_per_frame_uniforms(&pass.program, &technique.per_frame_uniforms);
         for texture in &technique.textures {
             bind_texture(pass.program.handle, texture);
         }
@@ -420,7 +486,7 @@ pub fn execute_render_pass(
         bind_dependencies(&pass.program, &pass.dependencies);
 
         for technique in &pass.techniques {
-            technique::update_per_model_uniform(
+            tech::update_per_model_uniform(
                 &pass.program,
                 &techniques.get(&technique).unwrap().per_model_uniforms,
                 i,
@@ -476,6 +542,80 @@ pub fn blit_framebuffer_to_backbuffer(pass: &Pass, window: &app::Window) {
     }
 }
 
+pub fn copy_framebuffer_to_texture(fbo: u32, width: u32, height: u32, target: gl::types::GLenum) {
+    unsafe {
+        gl::BindFramebuffer(gl::READ_FRAMEBUFFER, fbo);
+        gl::ReadBuffer(gl::COLOR_ATTACHMENT0);
+        gl::CopyTexSubImage2D(target, 0, 0, 0, 0, 0, width as i32, height as i32);
+        gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+    }
+}
+
+pub fn create_pass_attachments(descriptors: &Vec<PassAttachmentDescriptor>) -> Vec<PassAttachment> {
+    let mut attachments: Vec<PassAttachment> = Vec::new();
+
+    for desc in descriptors {
+        let attachment = match &desc.source {
+            PassAttachmentSource::ThisPass => match &desc.flavor {
+                PassAttachmentType::Color(_) => {
+                    let device_texture_descriptor =
+                        tex::create_color_attachment_device_texture_descriptor();
+                    let attachment_host_texture = tex::create_empty_host_texture(
+                        "color_attachment".to_string(),
+                        desc.width as usize,
+                        desc.height as usize,
+                        tex::convert_gl_format_to_image_depth(device_texture_descriptor.format),
+                    );
+                    let attachment_device_texture = tex::create_device_texture(
+                        attachment_host_texture.name.clone(),
+                        &attachment_host_texture,
+                        &device_texture_descriptor,
+                    );
+                    PassAttachment {
+                        texture: attachment_device_texture,
+                        desc: desc.clone(),
+                    }
+                }
+                PassAttachmentType::Depth(_, _) => {
+                    let device_texture_descriptor = tex::create_depth_device_texture_descriptor();
+                    let attachment_host_texture = tex::create_empty_host_texture(
+                        "depth attachment".to_string(),
+                        desc.width as usize,
+                        desc.height as usize,
+                        tex::convert_gl_format_to_image_depth(device_texture_descriptor.format),
+                    );
+                    let attachment_device_texture = tex::create_device_texture(
+                        attachment_host_texture.name.clone(),
+                        &attachment_host_texture,
+                        &device_texture_descriptor,
+                    );
+                    PassAttachment {
+                        texture: attachment_device_texture,
+                        desc: desc.clone(),
+                    }
+                }
+            },
+            PassAttachmentSource::OtherPass(source) => PassAttachment {
+                texture: source.device_texture.clone(),
+                desc: desc.clone(),
+            },
+        };
+
+        attachments.push(attachment);
+    }
+
+    attachments
+}
+
+pub fn delete_pass_attachments(attachments: &mut Vec<PassAttachment>) {
+    for attachment in attachments.iter() {
+        if let PassAttachmentSource::ThisPass = attachment.desc.source {
+            unsafe { gl::DeleteTextures(1, &attachment.texture.handle as *const u32) };
+        }
+    }
+    attachments.clear();
+}
+
 fn bind_material(program: &shader::ShaderProgram, material: &model::DeviceMaterial) {
     if let Some(texture) = &material.albedo_texture {
         bind_texture(program.handle, texture);
@@ -493,15 +633,12 @@ fn bind_material(program: &shader::ShaderProgram, material: &model::DeviceMateri
         bind_texture(program.handle, texture);
     }
 
-    technique::update_per_frame_uniforms_vec3f(
-        program,
-        std::slice::from_ref(&material.scalar_albedo),
-    );
-    technique::update_per_frame_uniforms_vec1f(
+    tech::update_per_frame_uniforms_vec3f(program, std::slice::from_ref(&material.scalar_albedo));
+    tech::update_per_frame_uniforms_vec1f(
         program,
         std::slice::from_ref(&material.scalar_roughness),
     );
-    technique::update_per_frame_uniforms_vec1f(
+    tech::update_per_frame_uniforms_vec1f(
         program,
         std::slice::from_ref(&material.scalar_metalness),
     );
@@ -553,136 +690,4 @@ fn unbind_texture(program: u32, sampler: &model::TextureSampler) {
             gl::BindTexture(sampler.texture.target, 0);
         }
     }
-}
-
-fn create_pass_attachments(descriptors: &Vec<PassAttachmentDescriptor>) -> Vec<PassAttachment> {
-    let mut attachments: Vec<PassAttachment> = Vec::new();
-
-    for desc in descriptors {
-        let attachment = match &desc.source {
-            PassAttachmentSource::Local => match &desc.flavor {
-                PassAttachmentType::Color(_) => {
-                    let device_texture_descriptor =
-                        texture::create_color_attachment_device_texture_descriptor();
-                    let attachment_host_texture = texture::create_empty_host_texture(
-                        "color_attachment".to_string(),
-                        desc.width as usize,
-                        desc.height as usize,
-                        texture::convert_gl_format_to_image_depth(device_texture_descriptor.format),
-                    );
-                    let attachment_device_texture = texture::create_device_texture(
-                        attachment_host_texture.name.clone(),
-                        &attachment_host_texture,
-                        &device_texture_descriptor,
-                    );
-                    PassAttachment {
-                        texture: attachment_device_texture,
-                        desc: desc.clone(),
-                    }
-                }
-                PassAttachmentType::Depth(_, _) => {
-                    let device_texture_descriptor =
-                        texture::create_depth_device_texture_descriptor();
-                    let attachment_host_texture = texture::create_empty_host_texture(
-                        "depth attachment".to_string(),
-                        desc.width as usize,
-                        desc.height as usize,
-                        texture::convert_gl_format_to_image_depth(device_texture_descriptor.format),
-                    );
-                    let attachment_device_texture = texture::create_device_texture(
-                        attachment_host_texture.name.clone(),
-                        &attachment_host_texture,
-                        &device_texture_descriptor,
-                    );
-                    PassAttachment {
-                        texture: attachment_device_texture,
-                        desc: desc.clone(),
-                    }
-                }
-            },
-            PassAttachmentSource::Remote(source) => PassAttachment {
-                texture: source.device_texture.clone(),
-                desc: desc.clone(),
-            },
-        };
-
-        attachments.push(attachment);
-    }
-
-    attachments
-}
-
-fn delete_pass_attachments(attachments: &mut Vec<PassAttachment>) {
-    for attachment in attachments.iter() {
-        if let PassAttachmentSource::Local = attachment.desc.source {
-            unsafe { gl::DeleteTextures(1, &attachment.texture.handle as *const u32) };
-        }
-    }
-    attachments.clear();
-}
-
-fn create_framebuffer_object(attachments: &Vec<PassAttachment>) -> Result<u32, String> {
-    let mut handle: u32 = 0;
-    unsafe { gl::GenFramebuffers(1, &mut handle as *mut u32) };
-    if handle == 0 {
-        return Result::Err("Failed to create framebuffer object".to_string());
-    }
-
-    unsafe { gl::BindFramebuffer(gl::FRAMEBUFFER, handle) };
-    let mut color_attachment_count: u32 = 0;
-    let mut depth_attachment_count: u32 = 0;
-    let mut draw_attachments: Vec<u32> = Vec::new();
-
-    for attachment in attachments {
-        unsafe { gl::ActiveTexture(gl::TEXTURE0) };
-        unsafe { gl::BindTexture(gl::TEXTURE_2D, attachment.texture.handle) };
-
-        let attachment_texture_handle = match &attachment.desc.source {
-            PassAttachmentSource::Local => attachment.texture.handle,
-            PassAttachmentSource::Remote(source) => source.device_texture.handle,
-        };
-
-        match attachment.desc.flavor {
-            PassAttachmentType::Color(_) => {
-                let attachment_index =
-                    (gl::COLOR_ATTACHMENT0 as u32 + color_attachment_count) as gl::types::GLenum;
-
-                unsafe {
-                    gl::FramebufferTexture2D(
-                        gl::FRAMEBUFFER,
-                        attachment_index,
-                        gl::TEXTURE_2D,
-                        attachment_texture_handle,
-                        0,
-                    );
-                }
-                draw_attachments.push(attachment_index);
-
-                color_attachment_count += 1;
-            }
-            PassAttachmentType::Depth(_, _) => {
-                assert!(
-                    depth_attachment_count == 0,
-                    "There can only be 1 depth attachment"
-                );
-                unsafe {
-                    gl::FramebufferTexture2D(
-                        gl::FRAMEBUFFER,
-                        gl::DEPTH_ATTACHMENT,
-                        gl::TEXTURE_2D,
-                        attachment_texture_handle,
-                        0,
-                    );
-                }
-                depth_attachment_count += 1;
-            }
-        }
-    }
-
-    unsafe { gl::DrawBuffers(draw_attachments.len() as i32, draw_attachments.as_ptr()) };
-    if unsafe { gl::CheckFramebufferStatus(gl::FRAMEBUFFER) != gl::FRAMEBUFFER_COMPLETE } {
-        return Result::Err("Framebuffer is not complete".to_string());
-    }
-
-    Result::Ok(handle)
 }

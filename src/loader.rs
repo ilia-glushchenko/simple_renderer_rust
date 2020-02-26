@@ -5,7 +5,7 @@ use crate::log;
 use crate::math;
 use crate::model;
 use crate::shader;
-use crate::texture;
+use crate::tex;
 use stb_image::image;
 use std::fs;
 use std::path::Path;
@@ -57,7 +57,7 @@ pub fn load_device_model_from_obj(path: &Path) -> model::DeviceModel {
     device_model
 }
 
-pub fn load_cube_map_texture(folder_path: &Path) -> texture::HostCubeMapTexture {
+pub fn load_cube_map_texture(folder_path: &Path) -> tex::HostCubeMapTexture {
     let px = load_host_texture_from_file(&folder_path.join("px.png")).unwrap();
     let nx = load_host_texture_from_file(&folder_path.join("nx.png")).unwrap();
     let py = load_host_texture_from_file(&folder_path.join("py.png")).unwrap();
@@ -65,7 +65,7 @@ pub fn load_cube_map_texture(folder_path: &Path) -> texture::HostCubeMapTexture 
     let pz = load_host_texture_from_file(&folder_path.join("pz.png")).unwrap();
     let nz = load_host_texture_from_file(&folder_path.join("nz.png")).unwrap();
 
-    texture::HostCubeMapTexture {
+    tex::HostCubeMapTexture {
         width: nx.width,
         height: nx.height,
         px,
@@ -77,24 +77,55 @@ pub fn load_cube_map_texture(folder_path: &Path) -> texture::HostCubeMapTexture 
     }
 }
 
-pub fn load_cube_map_texture_hdr(file_path: &Path) -> texture::HostCubeMapTexture {
-    assert!(
-        file_path.extension().unwrap() == "hdr",
-        "This function shall only load HDR files."
-    );
+pub fn load_host_texture_from_file(path: &Path) -> Result<tex::HostTexture, String> {
+    match image::load(path) {
+        image::LoadResult::ImageU8(image) => {
+            log::log_info(format!(
+                "Loaded 8-bit texture: {}",
+                path.to_str().unwrap_or_default()
+            ));
 
-    let texture = load_host_texture_from_file(file_path);
-    let texture = texture.unwrap();
+            Ok(tex::HostTexture {
+                name: String::from(
+                    path.file_name()
+                        .unwrap_or_default()
+                        .to_str()
+                        .unwrap_or_default(),
+                ),
+                width: image.width,
+                height: image.height,
+                depth: image.depth,
+                data: tex::HostTextureData::UINT8(image.data),
+            })
+        }
+        image::LoadResult::ImageF32(image) => {
+            log::log_info(format!(
+                "Loaded 32-bit texture: {}",
+                path.to_str().unwrap_or_default()
+            ));
 
-    texture::HostCubeMapTexture {
-        width: 1024,
-        height: 1024,
-        px: texture.clone(),
-        nx: texture.clone(),
-        py: texture.clone(),
-        ny: texture.clone(),
-        pz: texture.clone(),
-        nz: texture.clone(),
+            Ok(tex::HostTexture {
+                name: String::from(
+                    path.file_name()
+                        .unwrap_or_default()
+                        .to_str()
+                        .unwrap_or_default(),
+                ),
+                width: image.width,
+                height: image.height,
+                depth: image.depth,
+                data: tex::HostTextureData::FLOAT32(image.data),
+            })
+        }
+        image::LoadResult::Error(msg) => {
+            let msg = format!(
+                "Failed to load texture: {}\nSTB message: {}",
+                path.to_str().unwrap_or_default(),
+                msg
+            );
+            log::log_error(msg.clone());
+            Err(msg)
+        }
     }
 }
 
@@ -120,10 +151,14 @@ fn load_host_model_from_obj(file_path: &Path) -> model::HostModel {
 
     let mut materials: Vec<model::HostMaterial> = Vec::new();
     for raw_material in &raw_materials {
-        materials.push(create_host_material_from_tobj_material(
-            &file_path.parent().unwrap_or(Path::new("")),
-            raw_material,
-        ));
+        if let Some(folder) = file_path.parent() {
+            materials.push(create_host_material_from_tobj_material(
+                &folder,
+                raw_material,
+            ));
+        } else {
+            panic!("Failed to load model, folder path was invalid!");
+        }
     }
 
     let mut meshes: Vec<model::HostMesh> = Vec::new();
@@ -214,44 +249,69 @@ fn create_host_material_from_tobj_material(
     folder_path: &Path,
     raw_material: &tobj::Material,
 ) -> model::HostMaterial {
-    let albedo_texture =
-        load_host_texture_from_file(&folder_path.join(Path::new(&raw_material.diffuse_texture)));
-    let normal_texture = load_host_texture_from_file(
-        &folder_path.join(Path::new(
-            &raw_material
-                .unknown_param
-                .get(&"norm".to_string())
-                .unwrap_or(&"".to_string())
-                .to_string(),
-        )),
-    );
-    let bump_texture = load_host_texture_from_file(
-        &folder_path.join(Path::new(
-            &raw_material
-                .unknown_param
-                .get(&"bump".to_string())
-                .unwrap_or(&"".to_string())
-                .to_string(),
-        )),
-    );
-    let metallic_texture = load_host_texture_from_file(
-        &folder_path.join(Path::new(
-            &raw_material
-                .unknown_param
-                .get(&"map_Rm".to_string())
-                .unwrap_or(&"".to_string())
-                .to_string(),
-        )),
-    );
-    let roughness_texture = load_host_texture_from_file(
-        &folder_path.join(Path::new(
-            &raw_material
-                .unknown_param
-                .get(&"map_Pr".to_string())
-                .unwrap_or(&"".to_string())
-                .to_string(),
-        )),
-    );
+    let albedo_texture_path = folder_path.join(Path::new(&raw_material.diffuse_texture));
+    let mut albedo_texture = None;
+    if albedo_texture_path.is_file() {
+        if let Ok(texture) = load_host_texture_from_file(&albedo_texture_path) {
+            albedo_texture = Some(texture);
+        }
+    }
+
+    let normal_texture_path = folder_path.join(Path::new(
+        &raw_material
+            .unknown_param
+            .get(&"norm".to_string())
+            .unwrap_or(&"".to_string())
+            .to_string(),
+    ));
+    let mut normal_texture = None;
+    if normal_texture_path.is_file() {
+        if let Ok(texture) = load_host_texture_from_file(&normal_texture_path) {
+            normal_texture = Some(texture);
+        }
+    }
+
+    let bump_texture_path = folder_path.join(Path::new(
+        &raw_material
+            .unknown_param
+            .get(&"bump".to_string())
+            .unwrap_or(&"".to_string())
+            .to_string(),
+    ));
+    let mut bump_texture = None;
+    if bump_texture_path.is_file() {
+        if let Ok(texture) = load_host_texture_from_file(&bump_texture_path) {
+            bump_texture = Some(texture);
+        }
+    }
+
+    let metallic_texture_path = folder_path.join(Path::new(
+        &raw_material
+            .unknown_param
+            .get(&"map_Rm".to_string())
+            .unwrap_or(&"".to_string())
+            .to_string(),
+    ));
+    let mut metallic_texture = None;
+    if metallic_texture_path.is_file() {
+        if let Ok(texture) = load_host_texture_from_file(&metallic_texture_path) {
+            metallic_texture = Some(texture);
+        }
+    }
+
+    let roughness_texture_path = folder_path.join(Path::new(
+        &raw_material
+            .unknown_param
+            .get(&"map_Pr".to_string())
+            .unwrap_or(&"".to_string())
+            .to_string(),
+    ));
+    let mut roughness_texture = None;
+    if roughness_texture_path.is_file() {
+        if let Ok(texture) = load_host_texture_from_file(&roughness_texture_path) {
+            roughness_texture = Some(texture);
+        }
+    }
 
     model::HostMaterial {
         name: raw_material.name.clone(),
@@ -262,11 +322,11 @@ fn create_host_material_from_tobj_material(
         metallic_available: metallic_texture.is_some(),
         roughness_available: roughness_texture.is_some(),
 
-        albedo_texture,
-        normal_texture,
-        bump_texture,
-        metallic_texture,
-        roughness_texture,
+        albedo_texture: albedo_texture,
+        normal_texture: normal_texture,
+        bump_texture: bump_texture,
+        metallic_texture: metallic_texture,
+        roughness_texture: roughness_texture,
 
         //ToDo: Those are default values, need to replace them with
         //values from the actual raw materials
@@ -278,60 +338,4 @@ fn create_host_material_from_tobj_material(
         scalar_roughness: math::Vec1f { x: 1. },
         scalar_metalness: math::Vec1f { x: 1. },
     }
-}
-
-fn load_host_texture_from_file(path: &Path) -> Option<texture::HostTexture> {
-    let load_result = image::load(path);
-
-    if let image::LoadResult::ImageU8(image) = load_result {
-        log::log_info(format!(
-            "Loaded 8-bit texture: {}",
-            path.to_str().unwrap_or_default()
-        ));
-
-        return Some(texture::HostTexture {
-            name: String::from(
-                path.file_name()
-                    .unwrap_or_default()
-                    .to_str()
-                    .unwrap_or_default(),
-            ),
-            width: image.width,
-            height: image.height,
-            depth: image.depth,
-            data: texture::HostTextureData::UINT8(image.data),
-        });
-    }
-
-    if let image::LoadResult::ImageF32(image) = load_result {
-        log::log_info(format!(
-            "Loaded 32-bit texture: {}",
-            path.to_str().unwrap_or_default()
-        ));
-
-        return Some(texture::HostTexture {
-            name: String::from(
-                path.file_name()
-                    .unwrap_or_default()
-                    .to_str()
-                    .unwrap_or_default(),
-            ),
-            width: image.width,
-            height: image.height,
-            depth: image.depth,
-            data: texture::HostTextureData::FLOAT32(image.data),
-        });
-    }
-
-    if let image::LoadResult::Error(msg) = &load_result {
-        if path.is_file() {
-            log::log_error(format!(
-                "Failed to load texture: {} \nSTB message: {}",
-                path.to_str().unwrap_or_default(),
-                msg
-            ));
-        }
-    }
-
-    None
 }

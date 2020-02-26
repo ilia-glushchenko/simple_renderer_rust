@@ -36,6 +36,7 @@ pub struct DeviceTexture {
 }
 
 pub struct DeviceTextureDescriptor {
+    pub target: gl::types::GLenum,
     pub s_wrap: gl::types::GLenum,
     pub t_wrap: gl::types::GLenum,
     pub r_wrap: gl::types::GLenum,
@@ -55,6 +56,7 @@ pub fn create_color_device_texture_descriptor(
 
     if let Some(host_texture) = host_texture {
         result = Some(DeviceTextureDescriptor {
+            target: gl::TEXTURE_2D,
             s_wrap: gl::REPEAT,
             t_wrap: gl::REPEAT,
             r_wrap: gl::REPEAT,
@@ -75,6 +77,7 @@ pub fn create_cube_map_device_texture_descriptor(
     host_texture: &HostCubeMapTexture,
 ) -> DeviceTextureDescriptor {
     DeviceTextureDescriptor {
+        target: gl::TEXTURE_CUBE_MAP,
         s_wrap: gl::CLAMP_TO_EDGE,
         t_wrap: gl::CLAMP_TO_EDGE,
         r_wrap: gl::CLAMP_TO_EDGE,
@@ -90,6 +93,7 @@ pub fn create_cube_map_device_texture_descriptor(
 
 pub fn create_depth_device_texture_descriptor() -> DeviceTextureDescriptor {
     DeviceTextureDescriptor {
+        target: gl::TEXTURE_2D,
         s_wrap: gl::CLAMP_TO_EDGE,
         t_wrap: gl::CLAMP_TO_EDGE,
         r_wrap: gl::CLAMP_TO_EDGE,
@@ -105,6 +109,7 @@ pub fn create_depth_device_texture_descriptor() -> DeviceTextureDescriptor {
 
 pub fn create_color_attachment_device_texture_descriptor() -> DeviceTextureDescriptor {
     DeviceTextureDescriptor {
+        target: gl::TEXTURE_2D,
         s_wrap: gl::CLAMP_TO_EDGE,
         t_wrap: gl::CLAMP_TO_EDGE,
         r_wrap: gl::CLAMP_TO_EDGE,
@@ -113,6 +118,24 @@ pub fn create_color_attachment_device_texture_descriptor() -> DeviceTextureDescr
         max_anisotropy: 1_f32,
         internal_format: gl::RGBA32F,
         format: gl::RGBA,
+        data_type: gl::FLOAT,
+        use_mipmaps: false,
+    }
+}
+
+pub fn create_spherical_hdri_texture_descriptor(
+    host_texture: &HostTexture,
+) -> DeviceTextureDescriptor {
+    DeviceTextureDescriptor {
+        target: gl::TEXTURE_2D,
+        s_wrap: gl::CLAMP_TO_EDGE,
+        t_wrap: gl::CLAMP_TO_EDGE,
+        r_wrap: gl::CLAMP_TO_EDGE,
+        mag_filter: gl::LINEAR,
+        min_filter: gl::LINEAR,
+        max_anisotropy: 1_f32,
+        internal_format: convert_image_depth_to_gl_internal_format(host_texture.depth),
+        format: convert_image_depth_to_gl_format(host_texture.depth),
         data_type: gl::FLOAT,
         use_mipmaps: false,
     }
@@ -145,30 +168,23 @@ pub fn create_device_texture(
     assert!(handle != 0, "Failed to generate texture");
 
     unsafe {
-        gl::BindTexture(gl::TEXTURE_2D, handle);
-        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, desc.s_wrap as i32);
-        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, desc.t_wrap as i32);
-        gl::TexParameteri(
-            gl::TEXTURE_2D,
-            gl::TEXTURE_MAG_FILTER,
-            desc.mag_filter as i32,
-        );
-        gl::TexParameteri(
-            gl::TEXTURE_2D,
-            gl::TEXTURE_MIN_FILTER,
-            desc.min_filter as i32,
-        );
+        gl::BindTexture(desc.target, handle);
+        gl::TexParameteri(desc.target, gl::TEXTURE_WRAP_S, desc.s_wrap as i32);
+        gl::TexParameteri(desc.target, gl::TEXTURE_WRAP_T, desc.t_wrap as i32);
+        gl::TexParameteri(desc.target, gl::TEXTURE_WRAP_R, desc.r_wrap as i32);
+        gl::TexParameteri(desc.target, gl::TEXTURE_MAG_FILTER, desc.mag_filter as i32);
+        gl::TexParameteri(desc.target, gl::TEXTURE_MIN_FILTER, desc.min_filter as i32);
 
         if desc.max_anisotropy > 1. {
             gl::TexParameterf(
-                gl::TEXTURE_2D,
+                desc.target,
                 0x84FE as gl::types::GLenum,
                 desc.max_anisotropy,
             );
         }
 
         gl::TexImage2D(
-            gl::TEXTURE_2D,
+            desc.target,
             0,
             desc.internal_format as i32,
             host_texture.width as i32,
@@ -198,19 +214,19 @@ pub fn create_device_texture(
 
         if desc.use_mipmaps {
             gl::TexParameteri(
-                gl::TEXTURE_2D,
+                desc.target,
                 gl::TEXTURE_MIN_FILTER,
                 gl::LINEAR_MIPMAP_LINEAR as i32,
             );
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
-            gl::GenerateMipmap(gl::TEXTURE_2D);
+            gl::TexParameteri(desc.target, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
+            gl::GenerateMipmap(desc.target);
         }
     }
 
     DeviceTexture {
         name,
         handle,
-        target: gl::TEXTURE_2D,
+        target: desc.target,
     }
 }
 
@@ -309,6 +325,10 @@ pub fn create_device_cube_map_texture(
         handle,
         target: gl::TEXTURE_CUBE_MAP,
     }
+}
+
+pub fn delete_device_texture(device_texture: &DeviceTexture) {
+    unsafe { gl::DeleteTextures(1, &device_texture.handle) };
 }
 
 pub fn convert_image_depth_to_gl_internal_format(image_depth: usize) -> gl::types::GLenum {

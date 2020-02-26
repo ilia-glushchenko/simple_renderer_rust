@@ -85,7 +85,7 @@ float ShirleyDiffuse(vec3 n, vec3 l, vec3 v, float roughness, float F0)
 }
 
 //See Real-Time Rendering (page 355)
-vec3 HammonDiffuse(vec3 n, vec3 l, vec3 v, vec3 h, float roughness, float F0, vec3 albedo)
+vec3 HammonDiffuse(vec3 n, vec3 l, vec3 v, vec3 h, float roughness, vec3 F0, vec3 albedo)
 {
 	float NdotV = abs(dot(n, v)) + EPSILON;
 	float NdotH = clamp(dot(l, h), 0., 1.);
@@ -96,18 +96,13 @@ vec3 HammonDiffuse(vec3 n, vec3 l, vec3 v, vec3 h, float roughness, float F0, ve
     float viewScatter = 1 - pow(1 - NdotV, 5);
     float k_facing = 0.5 + 0.5 * LdotV;
 
-    float f_smooth = 21./20 * (1 - F0) * lightScatter * viewScatter;
+    vec3 f_smooth = 21./20 * (1 - F0) * lightScatter * viewScatter;
     float f_rough = k_facing * (0.9 - 0.4 * k_facing) * ((0.5 + NdotH) / NdotH);
     float f_multi = 0.3641 * roughness;
 
     return HeavisideStepFunction(NdotL) * HeavisideStepFunction(NdotV) *
         albedo / M_PI *
         ((1. - roughness) * f_smooth + roughness * f_rough + albedo * f_multi);
-}
-
-float CalculateF0(in float n1, float n2)
-{
-    return pow((n1 - n2) / (n1 + n2), 2);
 }
 
 float GGX(vec3 n, vec3 h, float roughness)
@@ -132,12 +127,12 @@ float CombinedSmithGGXMaskingShadowingFunction(vec3 n, vec3 l, vec3 v, float rou
     );
 }
 
-float SchlickFresnel(vec3 n, vec3 l, float F0)
+vec3 SchlickFresnel(vec3 n, vec3 l, vec3 F0)
 {
     return F0 + (1 - F0) * pow(1 - max(0, dot(n, l)), 5);
 }
 
-float CookTorrance(vec3 n, vec3 l, vec3 v, vec3 h, float roughness, float F0)
+vec3 CookTorrance(vec3 n, vec3 l, vec3 v, vec3 h, float roughness, vec3 F0)
 {
     return SchlickFresnel(n, l, F0) *
         CombinedSmithGGXMaskingShadowingFunction(n, l, v, roughness) *
@@ -174,7 +169,7 @@ void lighting()
     vec3 v = normalize(cameraPositionWorld - positionWorld);
     vec3 h = normalize(l + v);
     float r = length(pointLightPositionWorld - positionWorld);
-    float F0 = CalculateF0(1, 1.1);
+    vec3 F0 = vec3(0.562, 0.565, 0.578); //Iron
     //float radiance = ClampPunctualLightRadiance(r, 1);
 
     //Disney diffuse
@@ -195,6 +190,7 @@ void main()
 {
     vec3 albedo = uScalarAlbedoVec3f;
     float roughness = 1; uScalarRoughnessVec1f;
+    float metalness = 1; uScalarMetalnessVec1f;
 
     vec3 n = normalize(normalWorld);
     vec3 v = normalize(cameraPositionWorld - positionWorld);
@@ -203,9 +199,9 @@ void main()
     //vec3 l = r;
     vec3 l = normalize(vec3(0, 0, 1));
     vec3 h = normalize(l + v);
-    float F0 = CalculateF0(1, 1.1);
+    vec3 F0 = vec3(0.562, 0.565, 0.578); //Iron;
 
-    vec3 specular = texture(uSkyboxSamplerCube, -r, 0).rgb;
+    vec3 specular = texture(uSkyboxSamplerCube, r, 0).rgb;
 
     //Lambert
 	// float lin_roughness = 1 - pow(1 - 0.7 * roughness, 4);
@@ -232,4 +228,13 @@ void main()
     vec3 specular_radiance = specular * CookTorrance(n, r, v, n, roughness, F0);
 
     outColor = vec4((diffuse_radiance + specular_radiance) * max(0, dot(n, l)), 1);
+
+    vec3 kS = F0;
+    vec3 kD = 1.0 - kS;
+    kD *= 1.0 - metalness;
+
+    vec3 color = (kD * diffuse_radiance  + specular_radiance);
+    color = color / (color + vec3(1.0));
+    color = pow(color, vec3(1.0/2.2));
+    outColor = vec4(color, 1);
 }

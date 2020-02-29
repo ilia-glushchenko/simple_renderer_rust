@@ -256,3 +256,28 @@ pub mod hdri2cube {
             .data[0] = view;
     }
 }
+
+pub mod tone_mapping {
+    use crate::tech;
+
+    pub fn create() -> tech::Technique {
+        tech::Technique {
+            name: "HDRI 2 Cube".to_string(),
+            per_frame_uniforms: tech::Uniforms {
+                vec1f: Vec::new(),
+                vec1u: Vec::new(),
+                vec2f: Vec::new(),
+                vec3f: Vec::new(),
+                mat4x4f: Vec::new(),
+            },
+            per_model_uniforms: tech::PerModelUniforms {
+                vec1f: Vec::new(),
+                vec1u: Vec::new(),
+                vec2f: Vec::new(),
+                vec3f: Vec::new(),
+                mat4x4f: Vec::new(),
+            },
+            textures: Vec::new(),
+        }
+    }
+}

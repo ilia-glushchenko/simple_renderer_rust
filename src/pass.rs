@@ -16,22 +16,22 @@ pub enum PassAttachmentType {
 }
 
 #[derive(Clone)]
-pub struct OtherPassAttachmentSource {
+pub struct OtherPassTextureSource {
     pub pipeline_index: usize,
     pub attachment_index: usize,
     pub device_texture: tex::DeviceTexture,
 }
 
 #[derive(Clone)]
-pub enum PassAttachmentSource {
+pub enum PassTextureSource {
     ThisPass,
-    OtherPass(OtherPassAttachmentSource),
+    OtherPass(OtherPassTextureSource),
 }
 
 #[derive(Clone)]
 pub struct PassAttachmentDescriptor {
     pub flavor: PassAttachmentType,
-    pub source: PassAttachmentSource,
+    pub source: PassTextureSource,
     pub write: bool,
     pub clear: bool,
     pub width: u32,
@@ -45,13 +45,25 @@ pub struct PassAttachment {
 }
 
 #[derive(Clone)]
+pub struct PassDependencyDescriptor {
+    pub name: String,
+    pub source: OtherPassTextureSource,
+}
+
+#[derive(Clone)]
+pub struct PassDependency {
+    pub sampler: model::TextureSampler,
+    pub desc: PassDependencyDescriptor,
+}
+
+#[derive(Clone)]
 pub struct PassDescriptor {
     pub name: String,
     pub program: shader::HostShaderProgramDescriptor,
     pub techniques: Vec<tech::Techniques>,
 
     pub attachments: Vec<PassAttachmentDescriptor>,
-    pub dependencies: Vec<model::TextureSampler>,
+    pub dependencies: Vec<PassDependencyDescriptor>,
 
     pub width: u32,
     pub height: u32,
@@ -61,27 +73,25 @@ pub struct PassDescriptor {
 pub struct Pass {
     pub name: String,
     pub program: shader::ShaderProgram,
+    pub program_desc: shader::HostShaderProgramDescriptor,
     pub techniques: Vec<tech::Techniques>,
-    pub desc: PassDescriptor,
 
     pub attachments: Vec<PassAttachment>,
-    pub dependencies: Vec<model::TextureSampler>,
+    pub dependencies: Vec<PassDependency>,
 
     pub fbo: u32,
     pub width: u32,
     pub height: u32,
 }
 
-pub fn create_render_pass(mut desc: PassDescriptor) -> Result<Pass, String> {
+pub fn create_render_pass(desc: PassDescriptor) -> Result<Pass, String> {
     let device_program = shader::create_shader_program(&desc.program);
     if let Err(msg) = device_program {
         return Err(msg);
     }
     let device_program = device_program.unwrap();
 
-    for dependency in &mut desc.dependencies {
-        tech::bind_shader_program_to_texture(&device_program, dependency);
-    }
+    let dependencies = create_pass_dependencies(&device_program, &desc.dependencies);
 
     let attachments = create_pass_attachments(&desc.attachments);
     let framebuffer_object = create_framebuffer_object(&attachments);
@@ -92,10 +102,10 @@ pub fn create_render_pass(mut desc: PassDescriptor) -> Result<Pass, String> {
     Result::Ok(Pass {
         name: desc.name.clone(),
         program: device_program,
+        program_desc: desc.program.clone(),
         techniques: desc.techniques.clone(),
-        desc: desc.clone(),
         attachments,
-        dependencies: desc.dependencies,
+        dependencies,
         fbo: framebuffer_object.unwrap(),
         width: desc.width,
         height: desc.height,
@@ -122,13 +132,13 @@ pub fn create_framebuffer_object(attachments: &Vec<PassAttachment>) -> Result<u3
     let mut draw_attachments: Vec<u32> = Vec::new();
 
     for attachment in attachments {
-        unsafe { gl::ActiveTexture(gl::TEXTURE0) };
-        unsafe { gl::BindTexture(gl::TEXTURE_2D, attachment.texture.handle) };
-
         let attachment_texture_handle = match &attachment.desc.source {
-            PassAttachmentSource::ThisPass => attachment.texture.handle,
-            PassAttachmentSource::OtherPass(source) => source.device_texture.handle,
+            PassTextureSource::ThisPass => attachment.texture.handle,
+            PassTextureSource::OtherPass(source) => source.device_texture.handle,
         };
+
+        unsafe { gl::ActiveTexture(gl::TEXTURE0) };
+        unsafe { gl::BindTexture(gl::TEXTURE_2D, attachment_texture_handle) };
 
         match attachment.desc.flavor {
             PassAttachmentType::Color(_) => {
@@ -229,20 +239,34 @@ pub fn resize_render_pass(pass: &mut Pass, width: u32, height: u32) {
             })
             .collect();
 
+        let dependency_descriptors: Vec<PassDependencyDescriptor> = pass
+            .dependencies
+            .iter()
+            .map(|dependency| {
+                return PassDependencyDescriptor {
+                    name: dependency.desc.name.clone(),
+                    source: dependency.desc.source.clone(),
+                };
+            })
+            .collect();
+
+        let dependencies = create_pass_dependencies(&pass.program, &dependency_descriptors);
+
         let attachments = create_pass_attachments(&attachment_descriptors);
-        let fbo = create_framebuffer_object(&attachments);
-        if let Result::Ok(fbo) = fbo {
-            unsafe { gl::DeleteFramebuffers(1, &pass.fbo as *const u32) };
-            delete_pass_attachments(&mut pass.attachments);
-
-            pass.attachments = attachments;
-            pass.fbo = fbo;
-            pass.width = width;
-            pass.height = height;
-        }
-
-        if let Err(msg) = fbo {
-            log::log_error(format!("Failed to resize pass {0}", msg));
+        match create_framebuffer_object(&attachments) {
+            Result::Ok(fbo) => {
+                unsafe { gl::DeleteFramebuffers(1, &pass.fbo as *const u32) };
+                delete_pass_attachments(&mut pass.attachments);
+                pass.attachments = attachments;
+                pass.dependencies = dependencies;
+                pass.fbo = fbo;
+                pass.width = width;
+                pass.height = height;
+            }
+            Result::Err(msg) => {
+                log::log_error(format!("Failed to resize pass {0}", msg));
+                panic!(msg);
+            }
         }
     }
 }
@@ -354,7 +378,7 @@ pub fn is_render_pass_valid(
                 let dependency = pass
                     .dependencies
                     .iter()
-                    .find(|d| d.texture.name == sampler.name);
+                    .find(|d| d.sampler.texture.name == sampler.name);
 
                 let material = textures.iter().find(|t| t.texture.name == sampler.name);
 
@@ -556,7 +580,7 @@ pub fn create_pass_attachments(descriptors: &Vec<PassAttachmentDescriptor>) -> V
 
     for desc in descriptors {
         let attachment = match &desc.source {
-            PassAttachmentSource::ThisPass => match &desc.flavor {
+            PassTextureSource::ThisPass => match &desc.flavor {
                 PassAttachmentType::Color(_) => {
                     let device_texture_descriptor =
                         tex::create_color_attachment_device_texture_descriptor();
@@ -595,7 +619,7 @@ pub fn create_pass_attachments(descriptors: &Vec<PassAttachmentDescriptor>) -> V
                     }
                 }
             },
-            PassAttachmentSource::OtherPass(source) => PassAttachment {
+            PassTextureSource::OtherPass(source) => PassAttachment {
                 texture: source.device_texture.clone(),
                 desc: desc.clone(),
             },
@@ -609,11 +633,38 @@ pub fn create_pass_attachments(descriptors: &Vec<PassAttachmentDescriptor>) -> V
 
 pub fn delete_pass_attachments(attachments: &mut Vec<PassAttachment>) {
     for attachment in attachments.iter() {
-        if let PassAttachmentSource::ThisPass = attachment.desc.source {
+        if let PassTextureSource::ThisPass = attachment.desc.source {
             unsafe { gl::DeleteTextures(1, &attachment.texture.handle as *const u32) };
         }
     }
     attachments.clear();
+}
+
+pub fn create_pass_dependencies(
+    program: &shader::ShaderProgram,
+    descriptors: &Vec<PassDependencyDescriptor>,
+) -> Vec<PassDependency> {
+    let mut dependencies: Vec<PassDependency> = Vec::new();
+
+    for desc in descriptors {
+        dependencies.push(PassDependency {
+            sampler: model::TextureSampler {
+                bindings: Vec::new(),
+                texture: tex::DeviceTexture {
+                    name: desc.name.clone(),
+                    handle: desc.source.device_texture.handle,
+                    target: desc.source.device_texture.target,
+                },
+            },
+            desc: desc.clone(),
+        })
+    }
+
+    for dependency in &mut dependencies {
+        tech::bind_shader_program_to_texture_sampler(&program, &mut dependency.sampler);
+    }
+
+    dependencies
 }
 
 fn bind_material(program: &shader::ShaderProgram, material: &model::DeviceMaterial) {
@@ -662,15 +713,15 @@ fn unbind_material(program: &shader::ShaderProgram, material: &model::DeviceMate
     }
 }
 
-fn bind_dependencies(program: &shader::ShaderProgram, dependencies: &Vec<model::TextureSampler>) {
+fn bind_dependencies(program: &shader::ShaderProgram, dependencies: &Vec<PassDependency>) {
     for dep in dependencies {
-        bind_texture(program.handle, dep);
+        bind_texture(program.handle, &dep.sampler);
     }
 }
 
-fn unbind_dependencies(program: &shader::ShaderProgram, dependencies: &Vec<model::TextureSampler>) {
+fn unbind_dependencies(program: &shader::ShaderProgram, dependencies: &Vec<PassDependency>) {
     for dep in dependencies {
-        unbind_texture(program.handle, dep);
+        unbind_texture(program.handle, &dep.sampler);
     }
 }
 

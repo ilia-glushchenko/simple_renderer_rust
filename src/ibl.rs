@@ -12,8 +12,8 @@ use std::path::Path;
 use std::ptr::null;
 
 pub fn create_specular_cube_map_texture(host_texture: &tex::HostTexture) -> tex::DeviceTexture {
-    let width: u32 = 1024;
-    let height: u32 = 1024;
+    let width: u32 = 2048;
+    let height: u32 = 2048;
 
     let (mut techs, mut pass, box_model) = create_pass(host_texture, width, height);
 
@@ -243,7 +243,7 @@ fn create_pass(
 
         attachments: vec![pass::PassAttachmentDescriptor {
             flavor: pass::PassAttachmentType::Color(math::zero_vec4()),
-            source: pass::PassAttachmentSource::ThisPass,
+            source: pass::PassTextureSource::ThisPass,
             write: true,
             clear: true,
             width,
@@ -270,7 +270,7 @@ fn create_pass(
 fn create_attachments(width: u32, height: u32) -> Vec<pass::PassAttachment> {
     pass::create_pass_attachments(&vec![pass::PassAttachmentDescriptor {
         flavor: pass::PassAttachmentType::Color(math::zero_vec4()),
-        source: pass::PassAttachmentSource::ThisPass,
+        source: pass::PassTextureSource::ThisPass,
         write: true,
         clear: true,
         width,

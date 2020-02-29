@@ -106,6 +106,28 @@ pub struct DeviceModel {
     pub materials: Vec<DeviceMaterial>,
 }
 
+pub fn create_empty_host_material() -> HostMaterial {
+    HostMaterial {
+        name: "".to_string(),
+
+        albedo_available: false,
+        normal_available: false,
+        bump_available: false,
+        metallic_available: false,
+        roughness_available: false,
+
+        albedo_texture: None,
+        normal_texture: None,
+        bump_texture: None,
+        metallic_texture: None,
+        roughness_texture: None,
+
+        scalar_albedo: math::zero_vec3(),
+        scalar_roughness: math::zero_vec1(),
+        scalar_metalness: math::zero_vec1(),
+    }
+}
+
 pub fn create_host_mesh(
     material_index: usize,
     vertices: Vertices,

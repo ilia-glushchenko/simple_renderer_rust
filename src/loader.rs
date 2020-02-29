@@ -57,26 +57,6 @@ pub fn load_device_model_from_obj(path: &Path) -> model::DeviceModel {
     device_model
 }
 
-pub fn load_cube_map_texture(folder_path: &Path) -> tex::HostCubeMapTexture {
-    let px = load_host_texture_from_file(&folder_path.join("px.png")).unwrap();
-    let nx = load_host_texture_from_file(&folder_path.join("nx.png")).unwrap();
-    let py = load_host_texture_from_file(&folder_path.join("py.png")).unwrap();
-    let ny = load_host_texture_from_file(&folder_path.join("ny.png")).unwrap();
-    let pz = load_host_texture_from_file(&folder_path.join("pz.png")).unwrap();
-    let nz = load_host_texture_from_file(&folder_path.join("nz.png")).unwrap();
-
-    tex::HostCubeMapTexture {
-        width: nx.width,
-        height: nx.height,
-        px,
-        nx,
-        py,
-        ny,
-        pz,
-        nz,
-    }
-}
-
 pub fn load_host_texture_from_file(path: &Path) -> Result<tex::HostTexture, String> {
     match image::load(path) {
         image::LoadResult::ImageU8(image) => {

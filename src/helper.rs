@@ -118,3 +118,63 @@ pub fn create_host_triangle_model() -> model::HostMesh {
 
     model::create_host_mesh(0, vertices, normals, tangents, bitangents, uvs, indices)
 }
+
+pub fn create_full_screen_triangle_host_mesh() -> model::HostMesh {
+    let vertices: Vec<math::Vec3f> = vec![
+        math::Vec3 {
+            x: -1.0f32,
+            y: -1.0f32,
+            z: 0.5f32,
+        },
+        math::Vec3 {
+            x: 3.0f32,
+            y: -1.0f32,
+            z: 0.5f32,
+        },
+        math::Vec3 {
+            x: -1.0f32,
+            y: 3.0f32,
+            z: 0.5f32,
+        },
+    ];
+    let normals = vec![
+        math::Vec3 {
+            x: 0.0f32,
+            y: 0.0f32,
+            z: 1.0f32,
+        },
+        math::Vec3 {
+            x: 0.0f32,
+            y: 0.0f32,
+            z: 1.0f32,
+        },
+        math::Vec3 {
+            x: 0.0f32,
+            y: 0.0f32,
+            z: 1.0f32,
+        },
+    ];
+    let uvs = vec![
+        math::Vec2 {
+            x: 0.0f32,
+            y: 0.0f32,
+        },
+        math::Vec2 {
+            x: 2.0f32,
+            y: 0.0f32,
+        },
+        math::Vec2 {
+            x: 0.0f32,
+            y: 2.0f32,
+        },
+    ];
+    let indices = vec![
+        math::Vec1u { x: 0u32 },
+        math::Vec1u { x: 1u32 },
+        math::Vec1u { x: 2u32 },
+    ];
+
+    let (tangents, bitangents) = calculate_tangents_and_bitangents(&indices, &vertices, &uvs);
+
+    model::create_host_mesh(0, vertices, normals, tangents, bitangents, uvs, indices)
+}

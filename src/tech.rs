@@ -62,6 +62,7 @@ pub enum Techniques {
     MVP,
     Skybox,
     Hdri2Cube,
+    ToneMapping,
 }
 
 impl Eq for Techniques {}
@@ -436,19 +437,19 @@ pub fn bind_shader_program_to_material(
     program: &shader::ShaderProgram,
 ) {
     if let Some(sampler) = &mut material.albedo_texture {
-        bind_shader_program_to_texture(program, sampler);
+        bind_shader_program_to_texture_sampler(program, sampler);
     }
     if let Some(sampler) = &mut material.normal_texture {
-        bind_shader_program_to_texture(program, sampler);
+        bind_shader_program_to_texture_sampler(program, sampler);
     }
     if let Some(sampler) = &mut material.bump_texture {
-        bind_shader_program_to_texture(program, sampler);
+        bind_shader_program_to_texture_sampler(program, sampler);
     }
     if let Some(sampler) = &mut material.metallic_texture {
-        bind_shader_program_to_texture(program, sampler);
+        bind_shader_program_to_texture_sampler(program, sampler);
     }
     if let Some(sampler) = &mut material.roughness_texture {
-        bind_shader_program_to_texture(program, sampler);
+        bind_shader_program_to_texture_sampler(program, sampler);
     }
 
     bind_scalar_uniforms_to_shader_program(
@@ -491,19 +492,19 @@ pub fn unbind_shader_program_from_material(
     program_handle: u32,
 ) {
     if let Some(sampler) = &mut material.albedo_texture {
-        unbind_shader_program_from_texture(program_handle, sampler);
+        unbind_shader_program_from_texture_sampler(program_handle, sampler);
     }
     if let Some(sampler) = &mut material.normal_texture {
-        unbind_shader_program_from_texture(program_handle, sampler);
+        unbind_shader_program_from_texture_sampler(program_handle, sampler);
     }
     if let Some(sampler) = &mut material.bump_texture {
-        unbind_shader_program_from_texture(program_handle, sampler);
+        unbind_shader_program_from_texture_sampler(program_handle, sampler);
     }
     if let Some(sampler) = &mut material.metallic_texture {
-        unbind_shader_program_from_texture(program_handle, sampler);
+        unbind_shader_program_from_texture_sampler(program_handle, sampler);
     }
     if let Some(sampler) = &mut material.roughness_texture {
-        unbind_shader_program_from_texture(program_handle, sampler);
+        unbind_shader_program_from_texture_sampler(program_handle, sampler);
     }
 
     unbind_scalar_uniforms_from_shader_program(
@@ -541,7 +542,7 @@ pub fn unbind_shader_program_from_material(
     );
 }
 
-pub fn bind_shader_program_to_texture(
+pub fn bind_shader_program_to_texture_sampler(
     program: &shader::ShaderProgram,
     sampler: &mut model::TextureSampler,
 ) {
@@ -562,7 +563,7 @@ pub fn bind_shader_program_to_texture(
     }
 }
 
-pub fn unbind_shader_program_from_texture(
+pub fn unbind_shader_program_from_texture_sampler(
     program_handle: u32,
     sampler: &mut model::TextureSampler,
 ) {

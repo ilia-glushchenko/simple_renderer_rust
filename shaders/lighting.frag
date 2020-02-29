@@ -233,8 +233,6 @@ void main()
     vec3 kD = 1.0 - kS;
     kD *= 1.0 - metalness;
 
-    vec3 color = (kD * diffuse_radiance  + specular_radiance);
-    color = color / (color + vec3(1.0));
-    color = pow(color, vec3(1.0/2.2));
+    vec3 color = (kD * diffuse_radiance + specular_radiance);
     outColor = vec4(color, 1);
 }

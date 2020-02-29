@@ -67,7 +67,7 @@ fn load_pbr_spheres() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
 }
 
 #[allow(dead_code)]
-fn load_skybox() -> (model::DeviceModel, math::Mat4x4f) {
+fn load_skybox() -> (model::DeviceModel, tex::DeviceTexture, math::Mat4x4f) {
     let device_model = loader::load_device_model_from_obj(Path::new("data/models/box/box.obj"));
     let transform = math::scale_mat4x4(math::Vec3f {
         x: 100.,
@@ -75,16 +75,14 @@ fn load_skybox() -> (model::DeviceModel, math::Mat4x4f) {
         z: 100.,
     });
 
-    // let host_texture =
-    //     loader::load_cube_map_texture(&Path::new("data/materials/hdri/table_mountain"));
-    // let texture_descriptor = tex::create_cube_map_device_texture_descriptor(&host_texture);
-    // let device_texture = tex::create_device_cube_map_texture(
-    //     "uSkyboxSamplerCube".to_string(),
-    //     &host_texture,
-    //     &texture_descriptor,
-    // );
+    let hdr_skybox_texture = ibl::create_specular_cube_map_texture(
+        &loader::load_host_texture_from_file(&Path::new(
+            "data/materials/hdri/venice_sunset/venice_sunset_8k.hdr",
+        ))
+        .unwrap(),
+    );
 
-    (device_model, transform)
+    (device_model, hdr_skybox_texture, transform)
 }
 
 #[allow(dead_code)]
@@ -96,6 +94,13 @@ fn load_sponza() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
     (device_model, transforms)
 }
 
+fn load_full_screen_triangle_model() -> model::DeviceModel {
+    model::create_device_model(&model::HostModel {
+        meshes: vec![helper::create_full_screen_triangle_host_mesh()],
+        materials: vec![model::create_empty_host_material()],
+    })
+}
+
 fn main_loop(window: &mut app::Window) {
     let mut input_data: input::Data = input::Data {
         keys: HashMap::new(),
@@ -105,40 +110,47 @@ fn main_loop(window: &mut app::Window) {
         },
     };
 
-    let hdr_cubemap = ibl::create_specular_cube_map_texture(
-        &loader::load_host_texture_from_file(&Path::new(
-            "data/materials/hdri/the_sky_is_on_fire/the_sky_is_on_fire_4k.hdr",
-        ))
-        .unwrap(),
-    );
-    let (mut skybox_model, skybox_transform) = load_skybox();
+    let mut fullscreen_model = load_full_screen_triangle_model();
+    let (mut skybox_model, hdr_skybox_texture, skybox_transform) = load_skybox();
     let (mut device_model, transforms) = load_pbr_sphere();
     let mut camera = camera::create_default_camera(window.width, window.height);
 
-    let mvp_technique = techniques::mvp::create(hdr_cubemap.clone(), &camera, &transforms);
+    let mvp_technique = techniques::mvp::create(hdr_skybox_texture.clone(), &camera, &transforms);
     if let Err(msg) = tech::is_technique_valid(&mvp_technique) {
         log::log_error(msg);
         panic!();
     }
 
     let skybox_technique =
-        techniques::skybox::create(hdr_cubemap.clone(), &camera, skybox_transform);
+        techniques::skybox::create(hdr_skybox_texture.clone(), &camera, skybox_transform);
     if let Err(msg) = tech::is_technique_valid(&skybox_technique) {
         log::log_error(msg);
         panic!();
     }
 
+    let tone_mapping = techniques::tone_mapping::create();
+
     let mut techniques = tech::TechniqueMap::new();
     techniques.insert(tech::Techniques::MVP, mvp_technique);
     techniques.insert(tech::Techniques::Skybox, skybox_technique);
+    techniques.insert(tech::Techniques::ToneMapping, tone_mapping);
 
     let mut pipeline = pipeline::create_render_pipeline(&mut techniques, window);
-    if let Ok(ref mut pipeline) = &mut pipeline {
-        pass::bind_device_model_to_render_pass(&mut device_model, &pipeline[0]);
-        pass::bind_device_model_to_render_pass(&mut device_model, &pipeline[1]);
-        pass::bind_device_model_to_render_pass(&mut skybox_model, &pipeline[2]);
-        if let Err(msg) = pipeline::is_render_pipeline_valid(pipeline, &techniques, &device_model) {
-            log::log_error(msg);
+    match &mut pipeline {
+        Ok(ref mut pipeline) => {
+            pass::bind_device_model_to_render_pass(&mut device_model, &pipeline[0]);
+            pass::bind_device_model_to_render_pass(&mut device_model, &pipeline[1]);
+            pass::bind_device_model_to_render_pass(&mut skybox_model, &pipeline[2]);
+            pass::bind_device_model_to_render_pass(&mut fullscreen_model, &pipeline[3]);
+            if let Err(msg) =
+                pipeline::is_render_pipeline_valid(pipeline, &techniques, &device_model)
+            {
+                log::log_error(msg);
+            }
+        }
+        Err(msg) => {
+            log::log_error(msg.clone());
+            panic!();
         }
     }
 
@@ -167,34 +179,56 @@ fn main_loop(window: &mut app::Window) {
                             &mut techniques,
                             pass_program_handle,
                         );
-                        pass::unbind_device_model_from_render_pass(
-                            &mut device_model,
-                            pass_program_handle,
-                        );
                     }
 
+                    pass::unbind_device_model_from_render_pass(
+                        &mut device_model,
+                        pipeline[0].program.handle,
+                    );
+                    pass::unbind_device_model_from_render_pass(
+                        &mut device_model,
+                        pipeline[1].program.handle,
+                    );
+                    pass::unbind_device_model_from_render_pass(
+                        &mut skybox_model,
+                        pipeline[2].program.handle,
+                    );
+                    pass::unbind_device_model_from_render_pass(
+                        &mut fullscreen_model,
+                        pipeline[3].program.handle,
+                    );
+
                     for pass in pipeline.iter_mut() {
-                        pass::bind_device_model_to_render_pass(&mut device_model, &pass);
                         pass::bind_technique_to_render_pass(&mut techniques, pass);
                     }
 
-                    log::log_info("Pipeline hot reloaded".to_string());
+                    pass::bind_device_model_to_render_pass(&mut device_model, &pipeline[0]);
+                    pass::bind_device_model_to_render_pass(&mut device_model, &pipeline[1]);
+                    pass::bind_device_model_to_render_pass(&mut skybox_model, &pipeline[2]);
+                    pass::bind_device_model_to_render_pass(&mut fullscreen_model, &pipeline[3]);
 
                     if let Err(msg) =
                         pipeline::is_render_pipeline_valid(pipeline, &techniques, &device_model)
                     {
                         log::log_error(msg);
                     }
+                    log::log_info("Pipeline hot reloaded".to_string());
                 }
             }
 
             if window.resized {
                 pipeline::resize_render_pipeline(window, pipeline);
+                if let Err(msg) =
+                    pipeline::is_render_pipeline_valid(pipeline, &techniques, &device_model)
+                {
+                    log::log_error(msg);
+                }
             }
 
             pass::execute_render_pass(&pipeline[0], &techniques, &device_model);
             pass::execute_render_pass(&pipeline[1], &techniques, &device_model);
             pass::execute_render_pass(&pipeline[2], &techniques, &skybox_model);
+            pass::execute_render_pass(&pipeline[3], &techniques, &fullscreen_model);
 
             pass::blit_framebuffer_to_backbuffer(&pipeline.last().unwrap(), window);
         }
@@ -205,12 +239,18 @@ fn main_loop(window: &mut app::Window) {
     if let Ok(ref mut pipeline) = pipeline {
         pass::unbind_device_model_from_render_pass(&mut device_model, pipeline[0].program.handle);
         pass::unbind_device_model_from_render_pass(&mut device_model, pipeline[1].program.handle);
+        pass::unbind_device_model_from_render_pass(&mut skybox_model, pipeline[2].program.handle);
+        pass::unbind_device_model_from_render_pass(
+            &mut fullscreen_model,
+            pipeline[3].program.handle,
+        );
         pipeline::delete_render_pipeline(&mut techniques, pipeline);
     }
 
     tech::delete_techniques(techniques);
     model::delete_device_model(device_model);
     model::delete_device_model(skybox_model);
+    model::delete_device_model(fullscreen_model);
 }
 
 fn main() {

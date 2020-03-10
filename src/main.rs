@@ -67,7 +67,7 @@ fn load_pbr_spheres() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
 }
 
 #[allow(dead_code)]
-fn load_skybox() -> (model::DeviceModel, tex::DeviceTexture, math::Mat4x4f) {
+fn load_skybox() -> (model::DeviceModel, tex::DeviceTexture, tex::DeviceTexture, math::Mat4x4f) {
     let device_model = loader::load_device_model_from_obj(Path::new("data/models/box/box.obj"));
     let transform = math::scale_mat4x4(math::Vec3f {
         x: 100.,
@@ -82,7 +82,9 @@ fn load_skybox() -> (model::DeviceModel, tex::DeviceTexture, math::Mat4x4f) {
         .unwrap(),
     );
 
-    (device_model, hdr_skybox_texture, transform)
+    let hdr_diffuse_skybox = ibl::create_diffuse_cube_map_texture(&hdr_skybox_texture);
+
+    (device_model, hdr_skybox_texture, hdr_diffuse_skybox, transform)
 }
 
 #[allow(dead_code)]
@@ -111,11 +113,11 @@ fn main_loop(window: &mut app::Window) {
     };
 
     let mut fullscreen_model = load_full_screen_triangle_model();
-    let (mut skybox_model, hdr_skybox_texture, skybox_transform) = load_skybox();
+    let (mut skybox_model, hdr_skybox_texture, hdr_diffuse_skybox, skybox_transform) = load_skybox();
     let (mut device_model, transforms) = load_pbr_sphere();
     let mut camera = camera::create_default_camera(window.width, window.height);
 
-    let mvp_technique = techniques::mvp::create(hdr_skybox_texture.clone(), &camera, &transforms);
+    let mvp_technique = techniques::mvp::create(hdr_diffuse_skybox.clone(), &camera, &transforms);
     if let Err(msg) = tech::is_technique_valid(&mvp_technique) {
         log::log_error(msg);
         panic!();

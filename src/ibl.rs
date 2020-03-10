@@ -15,13 +15,31 @@ pub fn create_specular_cube_map_texture(host_texture: &tex::HostTexture) -> tex:
     let width: u32 = 2048;
     let height: u32 = 2048;
 
-    let (mut techs, mut pass, box_model) = create_pass(host_texture, width, height);
+    let (mut techs, mut pass, box_model) = create_hdri_2_cube_map_pass(host_texture, width, height);
 
     let fbos = draw_cubemap(&mut techs, &mut pass, &box_model);
 
-    let cubemap = create_cubemap(host_texture, width, height, &fbos);
+    let desc = tex::create_spherical_hdri_texture_descriptor(&host_texture);
+    let cubemap = create_cubemap(&desc, width, height, &fbos);
 
-    cleanup_cubempa_fbos(fbos, techs, pass, box_model);
+    cleanup_cubempa_fbos(fbos, &mut techs, pass, box_model);
+    tech::delete_techniques(techs);
+
+    cubemap
+}
+
+pub fn create_diffuse_cube_map_texture(cube_map: &tex::DeviceTexture) -> tex::DeviceTexture  {
+    let width: u32 = 2048;
+    let height: u32 = 2048;
+
+    let (mut techs, mut pass, box_model) = create_cubemap_convolution_pass(cube_map, width, height);
+
+    let fbos = draw_cubemap(&mut techs, &mut pass, &box_model);
+
+    let desc = tex::create_color_attachment_device_texture_descriptor();
+    let cubemap = create_cubemap(&desc, width, height, &fbos);
+
+    cleanup_cubempa_fbos(fbos, &mut techs, pass, box_model);
 
     cubemap
 }
@@ -41,12 +59,11 @@ struct CubeMapFbos {
 }
 
 fn create_cubemap(
-    host_texture: &tex::HostTexture,
+    desc: &tex::DeviceTextureDescriptor,
     width: u32,
     height: u32,
     fbos: &CubeMapFbos,
 ) -> tex::DeviceTexture {
-    let desc = tex::create_spherical_hdri_texture_descriptor(&host_texture);
     let mut handle: u32 = 0;
 
     unsafe {
@@ -131,7 +148,7 @@ fn create_cubemap(
 
 fn cleanup_cubempa_fbos(
     mut fbos: CubeMapFbos,
-    mut techs: tech::TechniqueMap,
+    techs: &mut tech::TechniqueMap,
     mut pass: pass::Pass,
     mut box_model: model::DeviceModel,
 ) {
@@ -148,10 +165,9 @@ fn cleanup_cubempa_fbos(
     pass::delete_pass_attachments(&mut fbos.px.attachments);
     unsafe { gl::DeleteFramebuffers(1, &fbos.px.fbo as *const u32) };
 
-    pass::unbind_technique_from_render_pass(&mut techs, pass.program.handle);
+    pass::unbind_technique_from_render_pass(techs, pass.program.handle);
     pass::unbind_device_model_from_render_pass(&mut box_model, pass.program.handle);
-    pass::unbind_technique_from_render_pass(&mut techs, pass.program.handle);
-    tech::delete_techniques(techs);
+    pass::unbind_technique_from_render_pass(techs, pass.program.handle);
     pass::delete_render_pass(&mut pass);
     model::delete_device_model(box_model);
 }
@@ -204,7 +220,7 @@ fn draw_cubemap_face(
     pass: &mut pass::Pass,
     box_model: &model::DeviceModel,
 ) -> PassFbo {
-    techniques::hdri2cube::update(techs.get_mut(&tech::Techniques::Hdri2Cube).unwrap(), view);
+    techniques::ibl::update(techs.get_mut(&tech::Techniques::IBL).unwrap(), view);
     pass::execute_render_pass(&pass, &techs, &box_model);
     let attachments = pass.attachments.clone();
     let fbo = pass.fbo;
@@ -214,15 +230,15 @@ fn draw_cubemap_face(
     PassFbo { fbo, attachments }
 }
 
-fn create_pass(
+fn create_hdri_2_cube_map_pass(
     host_texture: &tex::HostTexture,
     width: u32,
     height: u32,
 ) -> (tech::TechniqueMap, pass::Pass, model::DeviceModel) {
     let mut techs = tech::TechniqueMap::new();
     techs.insert(
-        tech::Techniques::Hdri2Cube,
-        techniques::hdri2cube::create(
+        tech::Techniques::IBL,
+        techniques::ibl::hdri2cube::create(
             math::perspective_projection_mat4x4(f32::consts::PI / 2.0, 1., 0.98, 1.01),
             tex::create_device_texture(
                 "uHdriSampler2D".to_string(),
@@ -239,7 +255,61 @@ fn create_pass(
             vert_shader_file_path: "shaders/hdri2cube.vert".to_string(),
             frag_shader_file_path: "shaders/hdri2cube.frag".to_string(),
         },
-        techniques: vec![tech::Techniques::Hdri2Cube],
+        techniques: vec![tech::Techniques::IBL],
+
+        attachments: vec![pass::PassAttachmentDescriptor {
+            flavor: pass::PassAttachmentType::Color(math::zero_vec4()),
+            source: pass::PassTextureSource::ThisPass,
+            write: true,
+            clear: true,
+            width,
+            height,
+        }],
+        dependencies: Vec::new(),
+
+        width,
+        height,
+    };
+
+    let pass = pass::create_render_pass(pass_desc).expect("Failed to create HDRI render pass.");
+
+    let mut box_model = loader::load_device_model_from_obj(Path::new("data/models/box/box.obj"));
+    pass::bind_technique_to_render_pass(&mut techs, &pass);
+    pass::bind_device_model_to_render_pass(&mut box_model, &pass);
+    if let Err(msg) = pass::is_render_pass_valid(&pass, &techs, &box_model) {
+        panic!(msg);
+    }
+
+    (techs, pass, box_model)
+}
+
+fn create_cubemap_convolution_pass(
+    cube_map: &tex::DeviceTexture,
+    width: u32,
+    height: u32,
+) -> (tech::TechniqueMap, pass::Pass, model::DeviceModel)
+{
+    let mut techs = tech::TechniqueMap::new();
+    techs.insert(
+        tech::Techniques::IBL,
+        techniques::ibl::cubemap_convolution::create(
+            math::perspective_projection_mat4x4(f32::consts::PI / 2.0, 1., 0.98, 1.01),
+            tex::DeviceTexture{
+                name: "uSkyboxSamplerCube".to_string(),
+                handle: cube_map.handle,
+                target: cube_map.target,
+            }
+        ),
+    );
+
+    let pass_desc = pass::PassDescriptor {
+        name: "Cubemap Convolution".to_string(),
+        program: shader::HostShaderProgramDescriptor {
+            name: "Cubemap Convolution".to_string(),
+            vert_shader_file_path: "shaders/cube_map_convolution.vert".to_string(),
+            frag_shader_file_path: "shaders/cube_map_convolution.frag".to_string(),
+        },
+        techniques: vec![tech::Techniques::IBL],
 
         attachments: vec![pass::PassAttachmentDescriptor {
             flavor: pass::PassAttachmentType::Color(math::zero_vec4()),

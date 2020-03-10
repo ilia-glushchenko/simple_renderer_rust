@@ -1,4 +1,4 @@
-#version 460
+#version 460 core
 
 layout (location = 10) uniform mat4 uModelMat4;
 layout (location = 11) uniform mat4 uViewMat4;

@@ -61,7 +61,7 @@ pub struct Technique {
 pub enum Techniques {
     MVP,
     Skybox,
-    Hdri2Cube,
+    IBL,
     ToneMapping,
 }
 

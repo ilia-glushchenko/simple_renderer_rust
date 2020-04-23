@@ -203,13 +203,13 @@ pub fn unbind_device_model_from_render_pass(
     }
 }
 
-pub fn bind_technique_to_render_pass(techniques: &mut tech::TechniqueMap, pass: &Pass) {
-    for (_, technique) in techniques.iter_mut() {
-        tech::bind_shader_program_to_technique(technique, &pass.program);
+pub fn bind_techniques_to_render_pass(techniques: &mut tech::TechniqueMap, pass: &Pass) {
+    for tech in &pass.techniques {
+        tech::bind_shader_program_to_technique(techniques.get_mut(&tech).unwrap(), &pass.program);
     }
 }
 
-pub fn unbind_technique_from_render_pass(
+pub fn unbind_techniques_from_render_pass(
     techniques: &mut tech::TechniqueMap,
     pass_program_handle: u32,
 ) {
@@ -285,6 +285,8 @@ pub fn is_render_pass_valid(
             .map(|x| (&x.name, 0))
             .collect();
 
+        // All uniforms must be provided by techniques or materials
+        // A uniform cannot be provided by more than one technique
         for technique in &pass.techniques {
             for uniform in techniques[technique].per_frame_uniforms.vec1f.iter() {
                 *scalar_uniforms.entry(&uniform.name).or_insert(0) += 1;
@@ -318,16 +320,37 @@ pub fn is_render_pass_valid(
                 *scalar_uniforms.entry(&uniform.name).or_insert(0) += 1;
             }
         }
-
-        for (uniform, count) in scalar_uniforms {
-            if count > 1 {
+        for (uniform, count) in &scalar_uniforms {
+            if *count > 1 {
                 log::log_error(format!(
-                    "Render pass '{}' is invalid! Uniform '{}' provided '{}' times.",
+                    "Render pass '{}' is invalid! Uniform '{}' provided '{}' times by techniques.",
                     pass.name, uniform, count
                 ));
-            } else if count == 0 {
+            }
+        }
+
+        //A uniform cannot be provided by both material and technique
+        for material in &device_model.materials {
+            for property_1u in &material.properties_1u {
+                *scalar_uniforms.entry(&property_1u.value.name).or_insert(0) += 1;
+            }
+            for property_1f in &material.properties_1f {
+                *scalar_uniforms.entry(&property_1f.value.name).or_insert(0) += 1;
+            }
+            for property_3f in &material.properties_3f {
+                *scalar_uniforms.entry(&property_3f.value.name).or_insert(0) += 1;
+            }
+        }
+        for (uniform, count) in &scalar_uniforms {
+            if *count > 1 && *count != device_model.materials.len() as u32 + 1 {
                 log::log_error(format!(
-                    "Render pass '{}' is invalid! Uniform '{}' not provided by tehcniques.",
+                    "Render pass '{}' is invalid!
+                     Uniform '{}'  provided '{}' times by techniques and materials.",
+                    pass.name, uniform, count
+                ));
+            } else if *count == 0 {
+                log::log_error(format!(
+                    "Render pass '{}' is invalid! Uniform '{}' not provided by tehcniques or materials.",
                     pass.name, uniform
                 ));
             }
@@ -356,23 +379,11 @@ pub fn is_render_pass_valid(
     // Check texture samplers
     {
         for (i, mesh) in device_model.meshes.iter().enumerate() {
-            let mut textures: Vec<&model::TextureSampler> = Vec::new();
-
-            if let Some(texture) = &device_model.materials[mesh.material_index].albedo_texture {
-                textures.push(&texture);
-            }
-            if let Some(texture) = &device_model.materials[mesh.material_index].normal_texture {
-                textures.push(&texture);
-            }
-            if let Some(texture) = &device_model.materials[mesh.material_index].bump_texture {
-                textures.push(&texture);
-            }
-            if let Some(texture) = &device_model.materials[mesh.material_index].metallic_texture {
-                textures.push(&texture);
-            }
-            if let Some(texture) = &device_model.materials[mesh.material_index].roughness_texture {
-                textures.push(&texture);
-            }
+            let textures: Vec<&model::TextureSampler> = device_model.materials[mesh.material_index]
+                .properties_samplers
+                .iter()
+                .map(|x| &x.value)
+                .collect();
 
             for sampler in &pass.program.samplers {
                 let dependency = pass
@@ -668,48 +679,26 @@ pub fn create_pass_dependencies(
 }
 
 fn bind_material(program: &shader::ShaderProgram, material: &model::DeviceMaterial) {
-    if let Some(texture) = &material.albedo_texture {
-        bind_texture(program.handle, texture);
-    }
-    if let Some(texture) = &material.normal_texture {
-        bind_texture(program.handle, texture);
-    }
-    if let Some(texture) = &material.bump_texture {
-        bind_texture(program.handle, texture);
-    }
-    if let Some(texture) = &material.metallic_texture {
-        bind_texture(program.handle, texture);
-    }
-    if let Some(texture) = &material.roughness_texture {
-        bind_texture(program.handle, texture);
+    for property_sampler in &material.properties_samplers {
+        bind_texture(program.handle, &property_sampler.value);
     }
 
-    tech::update_per_frame_uniforms_vec3f(program, std::slice::from_ref(&material.scalar_albedo));
-    tech::update_per_frame_uniforms_vec1f(
-        program,
-        std::slice::from_ref(&material.scalar_roughness),
-    );
-    tech::update_per_frame_uniforms_vec1f(
-        program,
-        std::slice::from_ref(&material.scalar_metalness),
-    );
+    for property_1u in &material.properties_1u {
+        tech::update_per_frame_uniforms_vec1u(program, std::slice::from_ref(&property_1u.value));
+    }
+
+    for property_1f in &material.properties_1f {
+        tech::update_per_frame_uniforms_vec1f(program, std::slice::from_ref(&property_1f.value));
+    }
+
+    for property_3f in &material.properties_3f {
+        tech::update_per_frame_uniforms_vec3f(program, std::slice::from_ref(&property_3f.value));
+    }
 }
 
 fn unbind_material(program: &shader::ShaderProgram, material: &model::DeviceMaterial) {
-    if let Some(texture) = &material.albedo_texture {
-        unbind_texture(program.handle, texture);
-    }
-    if let Some(texture) = &material.normal_texture {
-        unbind_texture(program.handle, texture);
-    }
-    if let Some(texture) = &material.bump_texture {
-        unbind_texture(program.handle, texture);
-    }
-    if let Some(texture) = &material.metallic_texture {
-        unbind_texture(program.handle, texture);
-    }
-    if let Some(texture) = &material.roughness_texture {
-        unbind_texture(program.handle, texture);
+    for property_sampler in &material.properties_samplers {
+        unbind_texture(program.handle, &property_sampler.value);
     }
 }
 

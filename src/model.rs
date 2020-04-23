@@ -33,24 +33,18 @@ pub struct HostMesh {
 }
 
 #[derive(Clone)]
+pub struct MaterialProperty<T> {
+    pub name: String,
+    pub value: T,
+}
+
+#[derive(Clone)]
 pub struct HostMaterial {
     pub name: String,
-
-    pub albedo_available: bool,
-    pub normal_available: bool,
-    pub bump_available: bool,
-    pub metallic_available: bool,
-    pub roughness_available: bool,
-
-    pub albedo_texture: Option<tex::HostTexture>,
-    pub normal_texture: Option<tex::HostTexture>,
-    pub bump_texture: Option<tex::HostTexture>,
-    pub metallic_texture: Option<tex::HostTexture>,
-    pub roughness_texture: Option<tex::HostTexture>,
-
-    pub scalar_albedo: math::Vec3f,
-    pub scalar_roughness: math::Vec1f,
-    pub scalar_metalness: math::Vec1f,
+    pub properties_1u: Vec<MaterialProperty<math::Vec1u>>,
+    pub properties_1f: Vec<MaterialProperty<math::Vec1f>>,
+    pub properties_3f: Vec<MaterialProperty<math::Vec3f>>,
+    pub properties_samplers: Vec<MaterialProperty<tex::HostTexture>>,
 }
 
 #[derive(Clone)]
@@ -83,21 +77,11 @@ pub struct TextureSampler {
 
 #[derive(Clone)]
 pub struct DeviceMaterial {
-    pub albedo_available: tech::Uniform<math::Vec1u>,
-    pub normal_available: tech::Uniform<math::Vec1u>,
-    pub bump_available: tech::Uniform<math::Vec1u>,
-    pub metallic_available: tech::Uniform<math::Vec1u>,
-    pub roughness_available: tech::Uniform<math::Vec1u>,
-
-    pub albedo_texture: Option<TextureSampler>,
-    pub normal_texture: Option<TextureSampler>,
-    pub bump_texture: Option<TextureSampler>,
-    pub metallic_texture: Option<TextureSampler>,
-    pub roughness_texture: Option<TextureSampler>,
-
-    pub scalar_albedo: tech::Uniform<math::Vec3f>,
-    pub scalar_roughness: tech::Uniform<math::Vec1f>,
-    pub scalar_metalness: tech::Uniform<math::Vec1f>,
+    pub name: String,
+    pub properties_1u: Vec<MaterialProperty<tech::Uniform<math::Vec1u>>>,
+    pub properties_1f: Vec<MaterialProperty<tech::Uniform<math::Vec1f>>>,
+    pub properties_3f: Vec<MaterialProperty<tech::Uniform<math::Vec3f>>>,
+    pub properties_samplers: Vec<MaterialProperty<TextureSampler>>,
 }
 
 #[derive(Clone)]
@@ -109,22 +93,20 @@ pub struct DeviceModel {
 pub fn create_empty_host_material() -> HostMaterial {
     HostMaterial {
         name: "".to_string(),
+        properties_1u: Vec::new(),
+        properties_1f: Vec::new(),
+        properties_3f: Vec::new(),
+        properties_samplers: Vec::new(),
+    }
+}
 
-        albedo_available: false,
-        normal_available: false,
-        bump_available: false,
-        metallic_available: false,
-        roughness_available: false,
-
-        albedo_texture: None,
-        normal_texture: None,
-        bump_texture: None,
-        metallic_texture: None,
-        roughness_texture: None,
-
-        scalar_albedo: math::zero_vec3(),
-        scalar_roughness: math::zero_vec1(),
-        scalar_metalness: math::zero_vec1(),
+pub fn create_empty_device_material() -> DeviceMaterial {
+    DeviceMaterial {
+        name: "".to_string(),
+        properties_1u: Vec::new(),
+        properties_1f: Vec::new(),
+        properties_3f: Vec::new(),
+        properties_samplers: Vec::new(),
     }
 }
 
@@ -221,109 +203,75 @@ where
 }
 
 fn create_device_material(material: &HostMaterial) -> DeviceMaterial {
+    let properties_1u = {
+        let mut properties = Vec::<MaterialProperty<tech::Uniform<math::Vec1u>>>::new();
+        for property in &material.properties_1u {
+            properties.push(MaterialProperty {
+                name: property.name.clone(),
+                value: tech::create_new_uniform(&property.name, property.value),
+            })
+        }
+        properties
+    };
+    let properties_1f = {
+        let mut properties = Vec::<MaterialProperty<tech::Uniform<math::Vec1f>>>::new();
+        for property in &material.properties_1f {
+            properties.push(MaterialProperty {
+                name: property.name.clone(),
+                value: tech::create_new_uniform(&property.name, property.value),
+            })
+        }
+        properties
+    };
+    let properties_3f = {
+        let mut properties = Vec::<MaterialProperty<tech::Uniform<math::Vec3f>>>::new();
+        for property in &material.properties_3f {
+            properties.push(MaterialProperty {
+                name: property.name.clone(),
+                value: tech::create_new_uniform(&property.name, property.value),
+            })
+        }
+        properties
+    };
+    let properties_samplers = {
+        let mut properties = Vec::<MaterialProperty<TextureSampler>>::new();
+        for property in &material.properties_samplers {
+            properties.push(MaterialProperty {
+                name: property.name.clone(),
+                value: create_material_texture(
+                    property.name.clone(),
+                    &property.value,
+                    &tex::create_color_device_texture_descriptor(&property.value),
+                ),
+            })
+        }
+        properties
+    };
+
     DeviceMaterial {
-        albedo_available: tech::create_new_uniform(
-            "uAlbedoAvailableVec1u",
-            math::Vec1u {
-                x: material.albedo_available as u32,
-            },
-        ),
-        normal_available: tech::create_new_uniform(
-            "uNormalAvailableVec1u",
-            math::Vec1u {
-                x: material.normal_available as u32,
-            },
-        ),
-        bump_available: tech::create_new_uniform(
-            "uBumpAvailableVec1u",
-            math::Vec1u {
-                x: material.bump_available as u32,
-            },
-        ),
-        metallic_available: tech::create_new_uniform(
-            "uMetallicAvailableVec1u",
-            math::Vec1u {
-                x: material.metallic_available as u32,
-            },
-        ),
-        roughness_available: tech::create_new_uniform(
-            "uRoughnessAvailableVec1u",
-            math::Vec1u {
-                x: material.roughness_available as u32,
-            },
-        ),
-
-        albedo_texture: create_material_texture(
-            "uAlbedoMapSampler2D".to_string(),
-            &material.albedo_texture,
-            &tex::create_color_device_texture_descriptor(&material.albedo_texture),
-        ),
-        normal_texture: create_material_texture(
-            "uNormalMapSampler2D".to_string(),
-            &material.normal_texture,
-            &tex::create_color_device_texture_descriptor(&material.normal_texture),
-        ),
-        bump_texture: create_material_texture(
-            "uBumpMapSampler2D".to_string(),
-            &material.bump_texture,
-            &tex::create_color_device_texture_descriptor(&material.bump_texture),
-        ),
-        metallic_texture: create_material_texture(
-            "uMetallicSampler2D".to_string(),
-            &material.metallic_texture,
-            &tex::create_color_device_texture_descriptor(&material.metallic_texture),
-        ),
-        roughness_texture: create_material_texture(
-            "uRoughnessSampler2D".to_string(),
-            &material.roughness_texture,
-            &tex::create_color_device_texture_descriptor(&material.roughness_texture),
-        ),
-
-        scalar_albedo: tech::create_new_uniform("uScalarAlbedoVec3f", material.scalar_albedo),
-        scalar_roughness: tech::create_new_uniform(
-            "uScalarRoughnessVec1f",
-            material.scalar_roughness,
-        ),
-        scalar_metalness: tech::create_new_uniform(
-            "uScalarMetalnessVec1f",
-            material.scalar_metalness,
-        ),
+        name: material.name.clone(),
+        properties_1u,
+        properties_1f,
+        properties_3f,
+        properties_samplers,
     }
 }
 
 fn delete_device_material(device_material: DeviceMaterial) {
-    if let Some(sampler) = device_material.albedo_texture {
-        tex::delete_device_texture(&sampler.texture);
-    }
-    if let Some(sampler) = device_material.normal_texture {
-        tex::delete_device_texture(&sampler.texture);
-    }
-    if let Some(sampler) = device_material.bump_texture {
-        tex::delete_device_texture(&sampler.texture);
-    }
-    if let Some(sampler) = device_material.metallic_texture {
-        tex::delete_device_texture(&sampler.texture);
-    }
-    if let Some(sampler) = device_material.roughness_texture {
-        tex::delete_device_texture(&sampler.texture);
+    for sampler in device_material.properties_samplers {
+        tex::delete_device_texture(&sampler.value.texture);
     }
 }
 
 fn create_material_texture(
     name: String,
-    host_texture: &Option<tex::HostTexture>,
-    desc: &Option<tex::DeviceTextureDescriptor>,
-) -> Option<TextureSampler> {
-    let mut result: Option<TextureSampler> = None;
-
-    if let (Some(host_texture), Some(desc)) = (host_texture, desc) {
-        result = Some(TextureSampler {
-            bindings: Vec::new(),
-            texture: tex::create_device_texture(name, host_texture, desc),
-        });
+    host_texture: &tex::HostTexture,
+    desc: &tex::DeviceTextureDescriptor,
+) -> TextureSampler {
+    TextureSampler {
+        bindings: Vec::new(),
+        texture: tex::create_device_texture(name, host_texture, desc),
     }
-
-    result
 }
 
 fn create_device_mesh(mesh: &HostMesh) -> DeviceMesh {

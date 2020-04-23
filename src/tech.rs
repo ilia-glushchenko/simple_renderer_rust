@@ -60,6 +60,7 @@ pub struct Technique {
 #[derive(Hash, PartialEq, Clone)]
 pub enum Techniques {
     MVP,
+    Lighting,
     Skybox,
     IBL,
     ToneMapping,
@@ -436,110 +437,60 @@ pub fn bind_shader_program_to_material(
     material: &mut model::DeviceMaterial,
     program: &shader::ShaderProgram,
 ) {
-    if let Some(sampler) = &mut material.albedo_texture {
-        bind_shader_program_to_texture_sampler(program, sampler);
-    }
-    if let Some(sampler) = &mut material.normal_texture {
-        bind_shader_program_to_texture_sampler(program, sampler);
-    }
-    if let Some(sampler) = &mut material.bump_texture {
-        bind_shader_program_to_texture_sampler(program, sampler);
-    }
-    if let Some(sampler) = &mut material.metallic_texture {
-        bind_shader_program_to_texture_sampler(program, sampler);
-    }
-    if let Some(sampler) = &mut material.roughness_texture {
-        bind_shader_program_to_texture_sampler(program, sampler);
+    for sampler in &mut material.properties_samplers {
+        bind_shader_program_to_texture_sampler(program, &mut sampler.value);
     }
 
-    bind_scalar_uniforms_to_shader_program(
-        program,
-        std::slice::from_mut(&mut material.albedo_available),
-    );
-    bind_scalar_uniforms_to_shader_program(
-        program,
-        std::slice::from_mut(&mut material.normal_available),
-    );
-    bind_scalar_uniforms_to_shader_program(
-        program,
-        std::slice::from_mut(&mut material.bump_available),
-    );
-    bind_scalar_uniforms_to_shader_program(
-        program,
-        std::slice::from_mut(&mut material.roughness_available),
-    );
-    bind_scalar_uniforms_to_shader_program(
-        program,
-        std::slice::from_mut(&mut material.metallic_available),
-    );
+    for property_1u in &mut material.properties_1u {
+        bind_scalar_uniforms_to_shader_program(
+            program,
+            std::slice::from_mut(&mut property_1u.value),
+        );
+    }
 
-    bind_scalar_uniforms_to_shader_program(
-        program,
-        std::slice::from_mut(&mut material.scalar_albedo),
-    );
-    bind_scalar_uniforms_to_shader_program(
-        program,
-        std::slice::from_mut(&mut material.scalar_roughness),
-    );
-    bind_scalar_uniforms_to_shader_program(
-        program,
-        std::slice::from_mut(&mut material.scalar_metalness),
-    );
+    for property_1f in &mut material.properties_1f {
+        bind_scalar_uniforms_to_shader_program(
+            program,
+            std::slice::from_mut(&mut property_1f.value),
+        );
+    }
+
+    for property_3f in &mut material.properties_3f {
+        bind_scalar_uniforms_to_shader_program(
+            program,
+            std::slice::from_mut(&mut property_3f.value),
+        );
+    }
 }
 
 pub fn unbind_shader_program_from_material(
     material: &mut model::DeviceMaterial,
     program_handle: u32,
 ) {
-    if let Some(sampler) = &mut material.albedo_texture {
-        unbind_shader_program_from_texture_sampler(program_handle, sampler);
-    }
-    if let Some(sampler) = &mut material.normal_texture {
-        unbind_shader_program_from_texture_sampler(program_handle, sampler);
-    }
-    if let Some(sampler) = &mut material.bump_texture {
-        unbind_shader_program_from_texture_sampler(program_handle, sampler);
-    }
-    if let Some(sampler) = &mut material.metallic_texture {
-        unbind_shader_program_from_texture_sampler(program_handle, sampler);
-    }
-    if let Some(sampler) = &mut material.roughness_texture {
-        unbind_shader_program_from_texture_sampler(program_handle, sampler);
+    for sampler in &mut material.properties_samplers {
+        unbind_shader_program_from_texture_sampler(program_handle, &mut sampler.value);
     }
 
-    unbind_scalar_uniforms_from_shader_program(
-        program_handle,
-        std::slice::from_mut(&mut material.albedo_available),
-    );
-    unbind_scalar_uniforms_from_shader_program(
-        program_handle,
-        std::slice::from_mut(&mut material.normal_available),
-    );
-    unbind_scalar_uniforms_from_shader_program(
-        program_handle,
-        std::slice::from_mut(&mut material.bump_available),
-    );
-    unbind_scalar_uniforms_from_shader_program(
-        program_handle,
-        std::slice::from_mut(&mut material.roughness_available),
-    );
-    unbind_scalar_uniforms_from_shader_program(
-        program_handle,
-        std::slice::from_mut(&mut material.metallic_available),
-    );
+    for property_1u in &mut material.properties_1u {
+        unbind_scalar_uniforms_from_shader_program(
+            program_handle,
+            std::slice::from_mut(&mut property_1u.value),
+        );
+    }
 
-    unbind_scalar_uniforms_from_shader_program(
-        program_handle,
-        std::slice::from_mut(&mut material.scalar_albedo),
-    );
-    unbind_scalar_uniforms_from_shader_program(
-        program_handle,
-        std::slice::from_mut(&mut material.scalar_roughness),
-    );
-    unbind_scalar_uniforms_from_shader_program(
-        program_handle,
-        std::slice::from_mut(&mut material.scalar_metalness),
-    );
+    for property_1f in &mut material.properties_1f {
+        unbind_scalar_uniforms_from_shader_program(
+            program_handle,
+            std::slice::from_mut(&mut property_1f.value),
+        );
+    }
+
+    for property_3f in &mut material.properties_3f {
+        unbind_scalar_uniforms_from_shader_program(
+            program_handle,
+            std::slice::from_mut(&mut property_3f.value),
+        );
+    }
 }
 
 pub fn bind_shader_program_to_texture_sampler(

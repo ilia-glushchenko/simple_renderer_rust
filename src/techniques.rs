@@ -1,28 +1,16 @@
 pub mod mvp {
     use crate::camera;
     use crate::math;
-    use crate::model;
     use crate::tech;
-    use crate::tex;
 
-    pub fn create(
-        skybox: tex::DeviceTexture,
-        camera: &camera::Camera,
-        transforms: &Vec<math::Mat4x4f>,
-    ) -> tech::Technique {
+    pub fn create(camera: &camera::Camera, transforms: &Vec<math::Mat4x4f>) -> tech::Technique {
         tech::Technique {
             name: "MVP".to_string(),
             per_frame_uniforms: tech::Uniforms {
                 vec1f: Vec::new(),
                 vec1u: Vec::new(),
                 vec2f: Vec::new(),
-                vec3f: vec![tech::Uniform::<math::Vec3f> {
-                    name: "uCameraPosVec3".to_string(),
-                    data_location: tech::UniformDataLoction {
-                        locations: Vec::new(),
-                        data: vec![camera.pos],
-                    },
-                }],
+                vec3f: Vec::new(),
                 mat4x4f: vec![
                     tech::Uniform::<math::Mat4x4f> {
                         name: "uProjMat4".to_string(),
@@ -65,10 +53,7 @@ pub mod mvp {
                         .collect(),
                 }],
             },
-            textures: vec![model::TextureSampler {
-                bindings: Vec::new(),
-                texture: skybox,
-            }],
+            textures: Vec::new(),
         }
     }
 
@@ -94,12 +79,71 @@ pub mod mvp {
             .data[0];
         *proj_mat =
             math::perspective_projection_mat4x4(camera.fov, camera.aspect, camera.near, camera.far);
+    }
+}
+
+pub mod lighting {
+    use crate::camera;
+    use crate::math;
+    use crate::model;
+    use crate::tech;
+    use crate::tex;
+
+    pub fn create(
+        specular_cubemap: &tex::DeviceTexture,
+        diffuse_cubemap: &tex::DeviceTexture,
+        camera: &camera::Camera,
+    ) -> tech::Technique {
+        tech::Technique {
+            name: "Lighting".to_string(),
+            per_frame_uniforms: tech::Uniforms {
+                vec1f: Vec::new(),
+                vec1u: Vec::new(),
+                vec2f: Vec::new(),
+                vec3f: vec![tech::Uniform::<math::Vec3f> {
+                    name: "uCameraPosVec3".to_string(),
+                    data_location: tech::UniformDataLoction {
+                        locations: Vec::new(),
+                        data: vec![camera.pos],
+                    },
+                }],
+                mat4x4f: Vec::new(),
+            },
+            per_model_uniforms: tech::PerModelUniforms {
+                vec1f: Vec::new(),
+                vec1u: Vec::new(),
+                vec2f: Vec::new(),
+                vec3f: Vec::new(),
+                mat4x4f: Vec::new(),
+            },
+            textures: vec![
+                model::TextureSampler {
+                    bindings: Vec::new(),
+                    texture: tex::DeviceTexture {
+                        name: "uSpecularSamplerCube".to_string(),
+                        handle: specular_cubemap.handle,
+                        target: specular_cubemap.target,
+                    },
+                },
+                model::TextureSampler {
+                    bindings: Vec::new(),
+                    texture: tex::DeviceTexture {
+                        name: "uDiffuseSamplerCube".to_string(),
+                        handle: diffuse_cubemap.handle,
+                        target: diffuse_cubemap.target,
+                    },
+                },
+            ],
+        }
+    }
+
+    pub fn update(tech: &mut tech::Technique, camera: &camera::Camera) {
         let camera_pos_index = tech
             .per_frame_uniforms
             .vec3f
             .iter()
             .position(|x| x.name == "uCameraPosVec3")
-            .expect("MVP technique must have uCameraPosVec3");
+            .expect("Lighting technique must have uCameraPosVec3");
         let camera_pos_vec = &mut tech.per_frame_uniforms.vec3f[camera_pos_index]
             .data_location
             .data[0];
@@ -279,7 +323,10 @@ pub mod ibl {
         use crate::tech;
         use crate::tex;
 
-        pub fn create(proj: math::Mat4x4f, specular_cubemap: tex::DeviceTexture) -> tech::Technique {
+        pub fn create(
+            proj: math::Mat4x4f,
+            specular_cubemap: tex::DeviceTexture,
+        ) -> tech::Technique {
             tech::Technique {
                 name: "Cubemap Convolution".to_string(),
                 per_frame_uniforms: tech::Uniforms {
@@ -332,5 +379,3 @@ pub mod ibl {
             .data[0] = view;
     }
 }
-
-

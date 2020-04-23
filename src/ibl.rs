@@ -28,7 +28,7 @@ pub fn create_specular_cube_map_texture(host_texture: &tex::HostTexture) -> tex:
     cubemap
 }
 
-pub fn create_diffuse_cube_map_texture(cube_map: &tex::DeviceTexture) -> tex::DeviceTexture  {
+pub fn create_diffuse_cube_map_texture(cube_map: &tex::DeviceTexture) -> tex::DeviceTexture {
     let width: u32 = 2048;
     let height: u32 = 2048;
 
@@ -165,9 +165,9 @@ fn cleanup_cubempa_fbos(
     pass::delete_pass_attachments(&mut fbos.px.attachments);
     unsafe { gl::DeleteFramebuffers(1, &fbos.px.fbo as *const u32) };
 
-    pass::unbind_technique_from_render_pass(techs, pass.program.handle);
+    pass::unbind_techniques_from_render_pass(techs, pass.program.handle);
     pass::unbind_device_model_from_render_pass(&mut box_model, pass.program.handle);
-    pass::unbind_technique_from_render_pass(techs, pass.program.handle);
+    pass::unbind_techniques_from_render_pass(techs, pass.program.handle);
     pass::delete_render_pass(&mut pass);
     model::delete_device_model(box_model);
 }
@@ -274,7 +274,9 @@ fn create_hdri_2_cube_map_pass(
     let pass = pass::create_render_pass(pass_desc).expect("Failed to create HDRI render pass.");
 
     let mut box_model = loader::load_device_model_from_obj(Path::new("data/models/box/box.obj"));
-    pass::bind_technique_to_render_pass(&mut techs, &pass);
+    box_model.materials = vec![model::create_empty_device_material()];
+
+    pass::bind_techniques_to_render_pass(&mut techs, &pass);
     pass::bind_device_model_to_render_pass(&mut box_model, &pass);
     if let Err(msg) = pass::is_render_pass_valid(&pass, &techs, &box_model) {
         panic!(msg);
@@ -287,18 +289,17 @@ fn create_cubemap_convolution_pass(
     cube_map: &tex::DeviceTexture,
     width: u32,
     height: u32,
-) -> (tech::TechniqueMap, pass::Pass, model::DeviceModel)
-{
+) -> (tech::TechniqueMap, pass::Pass, model::DeviceModel) {
     let mut techs = tech::TechniqueMap::new();
     techs.insert(
         tech::Techniques::IBL,
         techniques::ibl::cubemap_convolution::create(
             math::perspective_projection_mat4x4(f32::consts::PI / 2.0, 1., 0.98, 1.01),
-            tex::DeviceTexture{
+            tex::DeviceTexture {
                 name: "uSkyboxSamplerCube".to_string(),
                 handle: cube_map.handle,
                 target: cube_map.target,
-            }
+            },
         ),
     );
 
@@ -328,7 +329,8 @@ fn create_cubemap_convolution_pass(
     let pass = pass::create_render_pass(pass_desc).expect("Failed to create HDRI render pass.");
 
     let mut box_model = loader::load_device_model_from_obj(Path::new("data/models/box/box.obj"));
-    pass::bind_technique_to_render_pass(&mut techs, &pass);
+    box_model.materials = vec![model::create_empty_device_material()];
+    pass::bind_techniques_to_render_pass(&mut techs, &pass);
     pass::bind_device_model_to_render_pass(&mut box_model, &pass);
     if let Err(msg) = pass::is_render_pass_valid(&pass, &techs, &box_model) {
         panic!(msg);

@@ -229,11 +229,15 @@ fn create_host_material_from_tobj_material(
     folder_path: &Path,
     raw_material: &tobj::Material,
 ) -> model::HostMaterial {
+    let mut textures = Vec::<tex::HostTexture>::new();
+
     let albedo_texture_path = folder_path.join(Path::new(&raw_material.diffuse_texture));
-    let mut albedo_texture = None;
+    // let mut albedo_texture_available = false;
     if albedo_texture_path.is_file() {
-        if let Ok(texture) = load_host_texture_from_file(&albedo_texture_path) {
-            albedo_texture = Some(texture);
+        if let Ok(mut texture) = load_host_texture_from_file(&albedo_texture_path) {
+            texture.name = "uAlbedoMapSampler2D".to_string();
+            // albedo_texture_available = true;
+            textures.push(texture);
         }
     }
 
@@ -244,10 +248,12 @@ fn create_host_material_from_tobj_material(
             .unwrap_or(&"".to_string())
             .to_string(),
     ));
-    let mut normal_texture = None;
+    // let mut normal_texture_available = false;
     if normal_texture_path.is_file() {
-        if let Ok(texture) = load_host_texture_from_file(&normal_texture_path) {
-            normal_texture = Some(texture);
+        if let Ok(mut texture) = load_host_texture_from_file(&normal_texture_path) {
+            texture.name = "uNormalMapSampler2D".to_string();
+            // normal_texture_available = true;
+            textures.push(texture);
         }
     }
 
@@ -258,10 +264,12 @@ fn create_host_material_from_tobj_material(
             .unwrap_or(&"".to_string())
             .to_string(),
     ));
-    let mut bump_texture = None;
+    // let mut bump_texture_available = false;
     if bump_texture_path.is_file() {
-        if let Ok(texture) = load_host_texture_from_file(&bump_texture_path) {
-            bump_texture = Some(texture);
+        if let Ok(mut texture) = load_host_texture_from_file(&bump_texture_path) {
+            texture.name = "uBumpMapSampler2D".to_string();
+            // bump_texture_available = true;
+            textures.push(texture);
         }
     }
 
@@ -272,10 +280,12 @@ fn create_host_material_from_tobj_material(
             .unwrap_or(&"".to_string())
             .to_string(),
     ));
-    let mut metallic_texture = None;
+    // let mut metallic_texture_available = false;
     if metallic_texture_path.is_file() {
-        if let Ok(texture) = load_host_texture_from_file(&metallic_texture_path) {
-            metallic_texture = Some(texture);
+        if let Ok(mut texture) = load_host_texture_from_file(&metallic_texture_path) {
+            texture.name = "uMetallicSampler2D".to_string();
+            // metallic_texture_available = true;
+            textures.push(texture);
         }
     }
 
@@ -286,36 +296,79 @@ fn create_host_material_from_tobj_material(
             .unwrap_or(&"".to_string())
             .to_string(),
     ));
-    let mut roughness_texture = None;
+    // let mut roughness_texture_available = false;
     if roughness_texture_path.is_file() {
-        if let Ok(texture) = load_host_texture_from_file(&roughness_texture_path) {
-            roughness_texture = Some(texture);
+        if let Ok(mut texture) = load_host_texture_from_file(&roughness_texture_path) {
+            texture.name = "uRoughnessSampler2D".to_string();
+            // roughness_texture_available = true;
+            textures.push(texture);
         }
     }
 
     model::HostMaterial {
         name: raw_material.name.clone(),
 
-        albedo_available: albedo_texture.is_some(),
-        normal_available: normal_texture.is_some(),
-        bump_available: bump_texture.is_some(),
-        metallic_available: metallic_texture.is_some(),
-        roughness_available: roughness_texture.is_some(),
-
-        albedo_texture: albedo_texture,
-        normal_texture: normal_texture,
-        bump_texture: bump_texture,
-        metallic_texture: metallic_texture,
-        roughness_texture: roughness_texture,
+        properties_1u: Vec::new(),
+        // properties_1u: vec![
+        //     model::MaterialProperty {
+        //         name: "uAlbedoAvailableVec1u".to_string(),
+        //         value: math::Vec1u {
+        //             x: albedo_texture_available as u32,
+        //         },
+        //     },
+        //     model::MaterialProperty {
+        //         name: "uNormalAvailableVec1u".to_string(),
+        //         value: math::Vec1u {
+        //             x: normal_texture_available as u32,
+        //         },
+        //     },
+        //     model::MaterialProperty {
+        //         name: "uBumpAvailableVec1u".to_string(),
+        //         value: math::Vec1u {
+        //             x: bump_texture_available as u32,
+        //         },
+        //     },
+        //     model::MaterialProperty {
+        //         name: "uMetallicAvailableVec1u".to_string(),
+        //         value: math::Vec1u {
+        //             x: metallic_texture_available as u32,
+        //         },
+        //     },
+        //     model::MaterialProperty {
+        //         name: "uRoughnessAvailableVec1u".to_string(),
+        //         value: math::Vec1u {
+        //             x: roughness_texture_available as u32,
+        //         },
+        //     },
+        // ],
 
         //ToDo: Those are default values, need to replace them with
         //values from the actual raw materials
-        scalar_albedo: math::Vec3f {
-            x: 1.,
-            y: 1.,
-            z: 1.,
-        },
-        scalar_roughness: math::Vec1f { x: 1. },
-        scalar_metalness: math::Vec1f { x: 1. },
+        properties_1f: vec![
+            model::MaterialProperty {
+                name: "uScalarRoughnessVec1f".to_string(),
+                value: math::Vec1f { x: 1. },
+            },
+            model::MaterialProperty {
+                name: "uScalarMetalnessVec1f".to_string(),
+                value: math::Vec1f { x: 1. },
+            },
+        ],
+        properties_3f: vec![model::MaterialProperty {
+            name: "uScalarAlbedoVec3f".to_string(),
+            value: math::Vec3f {
+                x: 1.,
+                y: 1.,
+                z: 1.,
+            },
+        }],
+
+        properties_samplers: textures
+            .iter()
+            .map(|x| model::MaterialProperty {
+                name: x.name.clone(),
+                value: x.clone(),
+            })
+            .collect(),
     }
 }

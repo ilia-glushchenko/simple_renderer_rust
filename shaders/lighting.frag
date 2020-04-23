@@ -13,7 +13,8 @@ layout (binding = 1, location = 31) uniform sampler2D uNormalMapSampler2D;
 layout (binding = 2, location = 32) uniform sampler2D uBumpMapSampler2D;
 layout (binding = 3, location = 33) uniform sampler2D uMetallicSampler2D;
 layout (binding = 4, location = 34) uniform sampler2D uRoughnessSampler2D;
-layout (binding = 5, location = 35) uniform samplerCube uSkyboxSamplerCube;
+layout (binding = 5, location = 35) uniform samplerCube uSpecularSamplerCube;
+layout (binding = 6, location = 36) uniform samplerCube uDiffuseSamplerCube;
 
 layout (location = 0) in vec3 normalModel;
 layout (location = 1) in vec3 tangentModel;
@@ -53,20 +54,25 @@ float SchlickFresnel(float f0, float f90, float u)
     return f0 + (f90 - f0) * pow(1. - u, 5.);
 }
 
+vec3 SchlickFresnel3(in vec3 f0, in float f90, in float u)
+{
+    return f0 + (f90 - f0) * pow(1.f - u, 5.f);
+}
+
 //Moving Frostbite to Physically Based Rendering 3.0 (page 10)
-float DisneyDiceDiffuse(vec3 n, vec3 l, vec3 v, vec3 h, float roughness, float f0)
+float DisneyDiceDiffuse(vec3 n, vec3 l, vec3 v, vec3 h, float roughness, vec3 F0)
 {
 	float lin_roughness = 1 - pow(1 - 0.7 * roughness, 4);
 
-	float NdotV = abs(dot(n, v)) + EPSILON;
+	float NdotV = clamp(abs(dot(n, v)) + EPSILON, 0., 1.);
 	float LdotH = clamp(dot(l, h), 0., 1.);
 	float NdotL = clamp(dot(n, l), 0., 1.);
 
     float energyBias = mix(0.0, 0.5, lin_roughness);
     float energyFactor = mix(1.0, 1.0 / 1.51, lin_roughness);
     float fd90 = energyBias + 2.0 * LdotH * LdotH * lin_roughness;
-    float lightScatter = SchlickFresnel(f0, fd90, NdotL);
-    float viewScatter = SchlickFresnel(f0, fd90, NdotV);
+    float lightScatter = SchlickFresnel3(F0, fd90, NdotL).r;
+    float viewScatter = SchlickFresnel3(F0, fd90, NdotV).r;
 
     return lightScatter * viewScatter * energyFactor;
 }
@@ -189,19 +195,19 @@ void lighting()
 void main()
 {
     vec3 albedo = uScalarAlbedoVec3f;
-    float roughness = 1; uScalarRoughnessVec1f;
-    float metalness = 1; uScalarMetalnessVec1f;
+    float roughness = 1; //uScalarRoughnessVec1f;
+    float metalness = 1; //uScalarMetalnessVec1f;
 
     vec3 n = normalize(normalWorld);
     vec3 v = normalize(cameraPositionWorld - positionWorld);
     vec3 r = normalize(reflect(v, n));
 
-    //vec3 l = r;
-    vec3 l = normalize(vec3(0, 0, 1));
+    vec3 l = r;
     vec3 h = normalize(l + v);
     vec3 F0 = vec3(0.562, 0.565, 0.578); //Iron;
 
-    vec3 specular = texture(uSkyboxSamplerCube, r, 0).rgb;
+    vec3 diffuse = texture(uDiffuseSamplerCube, r, 0).rgb;
+    vec3 specular = texture(uSpecularSamplerCube, r, 0).rgb;
 
     //Lambert
 	// float lin_roughness = 1 - pow(1 - 0.7 * roughness, 4);
@@ -215,16 +221,16 @@ void main()
     // vec3 diffuse_radiance = (1 - lightScatter) * albedo / M_PI;
 
     //Disney diffuse
-    //vec3 diffuse_radiance = albedo * DisneyDiceDiffuse(n, l, v, h, roughness, F0);
+    vec3 diffuse_radiance = albedo * DisneyDiceDiffuse(n, l, v, h, roughness, F0);
 
     //Shirley diffuse
     //vec3 diffuse_radiance = albedo * ShirleyDiffuse(n, l, v, roughness, F0);
 
     //Hammon diffuse
-    // vec3 diffuse_radiance = HammonDiffuse(n, l, v, h, roughness, F0, albedo);
-    vec3 diffuse_radiance = HammonDiffuse(n, l, v, h, roughness, F0, albedo);
+    //vec3 diffuse_radiance = HammonDiffuse(n, l, v, h, roughness, F0, albedo);
+    //vec3 diffuse_radiance = HammonDiffuse(n, l, v, h, roughness, F0, albedo);
 
-    // vec3 specular_radiance = specular * CookTorrance(n, l, v, h, roughness, F0);
+    //vec3 specular_radiance = specular * CookTorrance(n, l, v, h, roughness, F0);
     vec3 specular_radiance = specular * CookTorrance(n, r, v, n, roughness, F0);
 
     outColor = vec4((diffuse_radiance + specular_radiance) * max(0, dot(n, l)), 1);

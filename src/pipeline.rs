@@ -12,7 +12,7 @@ pub fn create_render_pipeline(
     let clear_color = math::zero_vec4::<f32>();
 
     let depth_pre_pass_descriptor = pass::PassDescriptor {
-        name: "depth pre-pass".to_string(),
+        name: "Depth Pre-Pass".to_string(),
         program: shader::HostShaderProgramDescriptor {
             name: "depth pre-pass".to_string(),
             vert_shader_file_path: "shaders/depth_pre_pass.vert".to_string(),
@@ -36,16 +36,16 @@ pub fn create_render_pipeline(
         return Err(msg);
     }
     let depth_pre_pass = depth_pre_pass.unwrap();
-    pass::bind_technique_to_render_pass(techniques, &depth_pre_pass);
+    pass::bind_techniques_to_render_pass(techniques, &depth_pre_pass);
 
     let lighting_pass_descriptor = pass::PassDescriptor {
-        name: "lighting".to_string(),
+        name: "Lighting Pass".to_string(),
         program: shader::HostShaderProgramDescriptor {
             name: "lighting".to_string(),
             vert_shader_file_path: "shaders/lighting.vert".to_string(),
             frag_shader_file_path: "shaders/lighting.frag".to_string(),
         },
-        techniques: vec![tech::Techniques::MVP],
+        techniques: vec![tech::Techniques::MVP, tech::Techniques::Lighting],
         attachments: vec![
             pass::PassAttachmentDescriptor {
                 flavor: pass::PassAttachmentType::Depth(1., gl::EQUAL),
@@ -77,7 +77,7 @@ pub fn create_render_pipeline(
         return Err(msg);
     }
     let lighting_pass = lighting_pass.unwrap();
-    pass::bind_technique_to_render_pass(techniques, &lighting_pass);
+    pass::bind_techniques_to_render_pass(techniques, &lighting_pass);
 
     let skybox_pass_descriptor = pass::PassDescriptor {
         name: "Skybox Pass".to_string(),
@@ -122,12 +122,12 @@ pub fn create_render_pipeline(
         return Err(msg);
     }
     let skybox_pass = skybox_pass.unwrap();
-    pass::bind_technique_to_render_pass(techniques, &skybox_pass);
+    pass::bind_techniques_to_render_pass(techniques, &skybox_pass);
 
     let tone_mapping_pass_descriptor = pass::PassDescriptor {
-        name: "Tone Mapping".to_string(),
+        name: "Tone Mapping Pass".to_string(),
         program: shader::HostShaderProgramDescriptor {
-            name: "Tone Mapping".to_string(),
+            name: "tone mapping".to_string(),
             vert_shader_file_path: "shaders/pass_through.vert".to_string(),
             frag_shader_file_path: "shaders/tone_mapping.frag".to_string(),
         },
@@ -158,7 +158,7 @@ pub fn create_render_pipeline(
         return Err(msg);
     }
     let tone_mapping_pass = tone_mapping_pass.unwrap();
-    pass::bind_technique_to_render_pass(techniques, &tone_mapping_pass);
+    pass::bind_techniques_to_render_pass(techniques, &tone_mapping_pass);
 
     Ok(vec![
         depth_pre_pass,
@@ -170,7 +170,7 @@ pub fn create_render_pipeline(
 
 pub fn delete_render_pipeline(techniques: &mut tech::TechniqueMap, pipeline: &mut Vec<pass::Pass>) {
     for pass in pipeline.iter_mut() {
-        pass::unbind_technique_from_render_pass(techniques, pass.program.handle);
+        pass::unbind_techniques_from_render_pass(techniques, pass.program.handle);
         pass::delete_render_pass(pass);
     }
 }

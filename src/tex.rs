@@ -50,27 +50,21 @@ pub struct DeviceTextureDescriptor {
 }
 
 pub fn create_color_device_texture_descriptor(
-    host_texture: &Option<HostTexture>,
-) -> Option<DeviceTextureDescriptor> {
-    let mut result: Option<DeviceTextureDescriptor> = None;
-
-    if let Some(host_texture) = host_texture {
-        result = Some(DeviceTextureDescriptor {
-            target: gl::TEXTURE_2D,
-            s_wrap: gl::REPEAT,
-            t_wrap: gl::REPEAT,
-            r_wrap: gl::REPEAT,
-            mag_filter: gl::LINEAR,
-            min_filter: gl::LINEAR,
-            max_anisotropy: 16_f32,
-            internal_format: convert_image_depth_to_gl_internal_format(host_texture.depth),
-            format: convert_image_depth_to_gl_format(host_texture.depth),
-            data_type: gl::UNSIGNED_BYTE,
-            use_mipmaps: true,
-        });
+    host_texture: &HostTexture,
+) -> DeviceTextureDescriptor {
+    DeviceTextureDescriptor {
+        target: gl::TEXTURE_2D,
+        s_wrap: gl::REPEAT,
+        t_wrap: gl::REPEAT,
+        r_wrap: gl::REPEAT,
+        mag_filter: gl::LINEAR,
+        min_filter: gl::LINEAR,
+        max_anisotropy: 16_f32,
+        internal_format: convert_image_depth_to_gl_internal_format(host_texture.depth),
+        format: convert_image_depth_to_gl_format(host_texture.depth),
+        data_type: gl::UNSIGNED_BYTE,
+        use_mipmaps: true,
     }
-
-    result
 }
 
 pub fn create_depth_device_texture_descriptor() -> DeviceTextureDescriptor {
@@ -144,9 +138,7 @@ pub fn create_device_texture(
     desc: &DeviceTextureDescriptor,
 ) -> DeviceTexture {
     let mut handle: u32 = 0;
-    unsafe {
-        gl::GenTextures(1, &mut handle as *mut u32);
-    }
+    unsafe { gl::GenTextures(1, &mut handle as *mut u32) };
     assert!(handle != 0, "Failed to generate texture");
 
     unsafe {

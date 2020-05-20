@@ -342,7 +342,7 @@ pub fn is_render_pass_valid(
             }
         }
         for (uniform, count) in &scalar_uniforms {
-            if *count > 1 && *count != device_model.materials.len() as u32 + 1 {
+            if *count > 1 && *count != device_model.materials.len() as u32 {
                 log::log_error(format!(
                     "Render pass '{}' is invalid!
                      Uniform '{}'  provided '{}' times by techniques and materials.",

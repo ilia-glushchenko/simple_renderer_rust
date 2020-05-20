@@ -194,51 +194,41 @@ void lighting()
 
 void main()
 {
+    vec3 albedoTex = texture(uAlbedoMapSampler2D, uv, 0).rgb;
+    float metalnessTex = texture(uMetallicSampler2D, uv, 0).r;
+    float roughnessTex = texture(uRoughnessSampler2D, uv, 0).r;
+
+    vec3 pointLightColor = vec3(1, 1, 1);
     vec3 albedo = uScalarAlbedoVec3f;
-    float roughness = 1; //uScalarRoughnessVec1f;
-    float metalness = 1; //uScalarMetalnessVec1f;
+    float roughness = uScalarRoughnessVec1f;
+    float metalness = uScalarMetalnessVec1f;
 
     vec3 n = normalize(normalWorld);
     vec3 v = normalize(cameraPositionWorld - positionWorld);
     vec3 r = normalize(reflect(v, n));
-
-    vec3 l = r;
+    // vec3 l = r;
+    const vec3 pointLightPositionWorld = vec3(0, 0, 10000);
+    vec3 l = normalize(pointLightPositionWorld - positionWorld);
     vec3 h = normalize(l + v);
-    vec3 F0 = vec3(0.562, 0.565, 0.578); //Iron;
 
-    vec3 diffuse = texture(uDiffuseSamplerCube, r, 0).rgb;
+    //vec3 diffuse = texture(uDiffuseSamplerCube, r, 0).rgb;
     vec3 specular = texture(uSpecularSamplerCube, r, 0).rgb;
 
-    //Lambert
-	// float lin_roughness = 1 - pow(1 - 0.7 * roughness, 4);
-	// float NdotV = abs(dot(n, v)) + EPSILON;
-	// float LdotH = clamp(dot(l, h), 0., 1.);
-	// float NdotL = clamp(dot(n, l), 0., 1.);
-    // float energyBias = mix(0.0, 0.5, lin_roughness);
-    // float energyFactor = mix(1.0, 1.0 / 1.51, lin_roughness);
-    // float fd90 = energyBias + 2.0 * LdotH * LdotH * lin_roughness;
-    // float lightScatter = SchlickFresnel(F0, fd90, NdotL);
-    // vec3 diffuse_radiance = (1 - lightScatter) * albedo / M_PI;
+    vec3 F0 = vec3(0.04);
+    F0 = mix(F0, albedo, metalness);
 
-    //Disney diffuse
     vec3 diffuse_radiance = albedo * DisneyDiceDiffuse(n, l, v, h, roughness, F0);
-
-    //Shirley diffuse
-    //vec3 diffuse_radiance = albedo * ShirleyDiffuse(n, l, v, roughness, F0);
-
-    //Hammon diffuse
-    //vec3 diffuse_radiance = HammonDiffuse(n, l, v, h, roughness, F0, albedo);
-    //vec3 diffuse_radiance = HammonDiffuse(n, l, v, h, roughness, F0, albedo);
-
-    //vec3 specular_radiance = specular * CookTorrance(n, l, v, h, roughness, F0);
-    vec3 specular_radiance = specular * CookTorrance(n, r, v, n, roughness, F0);
-
-    outColor = vec4((diffuse_radiance + specular_radiance) * max(0, dot(n, l)), 1);
+    vec3 specular_radiance = pointLightColor * CookTorrance(n, r, v, n, roughness, F0);
 
     vec3 kS = F0;
     vec3 kD = 1.0 - kS;
     kD *= 1.0 - metalness;
 
-    vec3 color = (kD * diffuse_radiance + specular_radiance);
-    outColor = vec4(color, 1);
+    outColor = vec4(
+        (kD * diffuse_radiance + specular_radiance) 
+        * max(0, dot(n, l))
+    , 1);
+
+    // outColor = vec4((kD * diffuse_radiance + specular_radiance), 1);
+    // outColor = vec4(F0, 1);
 }

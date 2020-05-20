@@ -9,6 +9,9 @@ use crate::tex;
 use stb_image::image;
 use std::fs;
 use std::path::Path;
+use std::path::PathBuf;
+use std::sync::mpsc::channel;
+use threadpool::ThreadPool;
 
 pub fn load_host_shader_program(
     descriptor: &shader::HostShaderProgramDescriptor,
@@ -57,7 +60,7 @@ pub fn load_device_model_from_obj(path: &Path) -> model::DeviceModel {
     device_model
 }
 
-pub fn load_host_texture_from_file(path: &Path) -> Result<tex::HostTexture, String> {
+pub fn load_host_texture_from_file(path: &Path, name: String) -> Result<tex::HostTexture, String> {
     match image::load(path) {
         image::LoadResult::ImageU8(image) => {
             log::log_info(format!(
@@ -66,12 +69,7 @@ pub fn load_host_texture_from_file(path: &Path) -> Result<tex::HostTexture, Stri
             ));
 
             Ok(tex::HostTexture {
-                name: String::from(
-                    path.file_name()
-                        .unwrap_or_default()
-                        .to_str()
-                        .unwrap_or_default(),
-                ),
+                name,
                 width: image.width,
                 height: image.height,
                 depth: image.depth,
@@ -85,12 +83,7 @@ pub fn load_host_texture_from_file(path: &Path) -> Result<tex::HostTexture, Stri
             ));
 
             Ok(tex::HostTexture {
-                name: String::from(
-                    path.file_name()
-                        .unwrap_or_default()
-                        .to_str()
-                        .unwrap_or_default(),
-                ),
+                name,
                 width: image.width,
                 height: image.height,
                 depth: image.depth,
@@ -109,7 +102,7 @@ pub fn load_host_texture_from_file(path: &Path) -> Result<tex::HostTexture, Stri
     }
 }
 
-fn load_host_model_from_obj(file_path: &Path) -> model::HostModel {
+pub fn load_host_model_from_obj(file_path: &Path) -> model::HostModel {
     assert!(
         file_path.extension().unwrap() == "obj",
         "This function shall only load OBJ files.",
@@ -212,10 +205,10 @@ fn create_host_mesh_from_tobj_mesh(raw_model: &tobj::Model) -> model::HostMesh {
         helper::calculate_tangents_and_bitangents(&indices, &vertices, &uvs);
 
     model::create_host_mesh(
-        raw_model
-            .mesh
-            .material_id
-            .expect("Model should have a material"),
+        raw_model.mesh.material_id.expect(&format!(
+            "Raw OBJ Model: {} Does not have material index",
+            raw_model.name,
+        )),
         vertices,
         normals,
         tangents,
@@ -229,79 +222,77 @@ fn create_host_material_from_tobj_material(
     folder_path: &Path,
     raw_material: &tobj::Material,
 ) -> model::HostMaterial {
+    struct TextureLoadInfo {
+        path: PathBuf,
+        name: String,
+    }
+    let texture_load_infos: Vec<TextureLoadInfo> = vec![
+        TextureLoadInfo {
+            path: folder_path.join(Path::new(&raw_material.diffuse_texture)),
+            name: "uAlbedoMapSampler2D".to_string(),
+        },
+        TextureLoadInfo {
+            path: folder_path.join(Path::new(
+                &raw_material
+                    .unknown_param
+                    .get(&"norm".to_string())
+                    .unwrap_or(&"".to_string())
+                    .to_string(),
+            )),
+            name: "uNormalMapSampler2D".to_string(),
+        },
+        TextureLoadInfo {
+            path: folder_path.join(Path::new(
+                &raw_material
+                    .unknown_param
+                    .get(&"bump".to_string())
+                    .unwrap_or(&"".to_string())
+                    .to_string(),
+            )),
+            name: "uBumpMapSampler2D".to_string(),
+        },
+        TextureLoadInfo {
+            path: folder_path.join(Path::new(
+                &raw_material
+                    .unknown_param
+                    .get(&"map_Rm".to_string())
+                    .unwrap_or(&"".to_string())
+                    .to_string(),
+            )),
+            name: "uMetallicSampler2D".to_string(),
+        },
+        TextureLoadInfo {
+            path: folder_path.join(Path::new(
+                &raw_material
+                    .unknown_param
+                    .get(&"map_Pr".to_string())
+                    .unwrap_or(&"".to_string())
+                    .to_string(),
+            )),
+            name: "uRoughnessSampler2D".to_string(),
+        },
+    ]
+    .into_iter()
+    .filter(|x| x.path.is_file())
+    .collect();
+
+    let pool_size = texture_load_infos.len();
     let mut textures = Vec::<tex::HostTexture>::new();
-
-    let albedo_texture_path = folder_path.join(Path::new(&raw_material.diffuse_texture));
-    // let mut albedo_texture_available = false;
-    if albedo_texture_path.is_file() {
-        if let Ok(mut texture) = load_host_texture_from_file(&albedo_texture_path) {
-            texture.name = "uAlbedoMapSampler2D".to_string();
-            // albedo_texture_available = true;
-            textures.push(texture);
+    if pool_size > 0 {
+        let pool = ThreadPool::new(pool_size);
+        let (sender, receiver) = channel();
+        for info in texture_load_infos {
+            let sender = sender.clone();
+            pool.execute(move || {
+                sender
+                    .send(load_host_texture_from_file(&info.path, info.name))
+                    .unwrap();
+            });
         }
-    }
-
-    let normal_texture_path = folder_path.join(Path::new(
-        &raw_material
-            .unknown_param
-            .get(&"norm".to_string())
-            .unwrap_or(&"".to_string())
-            .to_string(),
-    ));
-    // let mut normal_texture_available = false;
-    if normal_texture_path.is_file() {
-        if let Ok(mut texture) = load_host_texture_from_file(&normal_texture_path) {
-            texture.name = "uNormalMapSampler2D".to_string();
-            // normal_texture_available = true;
-            textures.push(texture);
-        }
-    }
-
-    let bump_texture_path = folder_path.join(Path::new(
-        &raw_material
-            .unknown_param
-            .get(&"bump".to_string())
-            .unwrap_or(&"".to_string())
-            .to_string(),
-    ));
-    // let mut bump_texture_available = false;
-    if bump_texture_path.is_file() {
-        if let Ok(mut texture) = load_host_texture_from_file(&bump_texture_path) {
-            texture.name = "uBumpMapSampler2D".to_string();
-            // bump_texture_available = true;
-            textures.push(texture);
-        }
-    }
-
-    let metallic_texture_path = folder_path.join(Path::new(
-        &raw_material
-            .unknown_param
-            .get(&"map_Rm".to_string())
-            .unwrap_or(&"".to_string())
-            .to_string(),
-    ));
-    // let mut metallic_texture_available = false;
-    if metallic_texture_path.is_file() {
-        if let Ok(mut texture) = load_host_texture_from_file(&metallic_texture_path) {
-            texture.name = "uMetallicSampler2D".to_string();
-            // metallic_texture_available = true;
-            textures.push(texture);
-        }
-    }
-
-    let roughness_texture_path = folder_path.join(Path::new(
-        &raw_material
-            .unknown_param
-            .get(&"map_Pr".to_string())
-            .unwrap_or(&"".to_string())
-            .to_string(),
-    ));
-    // let mut roughness_texture_available = false;
-    if roughness_texture_path.is_file() {
-        if let Ok(mut texture) = load_host_texture_from_file(&roughness_texture_path) {
-            texture.name = "uRoughnessSampler2D".to_string();
-            // roughness_texture_available = true;
-            textures.push(texture);
+        for texture_load_result in receiver.iter().take(pool_size) {
+            if let Ok(texture) = texture_load_result {
+                textures.push(texture);
+            }
         }
     }
 
@@ -309,38 +300,6 @@ fn create_host_material_from_tobj_material(
         name: raw_material.name.clone(),
 
         properties_1u: Vec::new(),
-        // properties_1u: vec![
-        //     model::MaterialProperty {
-        //         name: "uAlbedoAvailableVec1u".to_string(),
-        //         value: math::Vec1u {
-        //             x: albedo_texture_available as u32,
-        //         },
-        //     },
-        //     model::MaterialProperty {
-        //         name: "uNormalAvailableVec1u".to_string(),
-        //         value: math::Vec1u {
-        //             x: normal_texture_available as u32,
-        //         },
-        //     },
-        //     model::MaterialProperty {
-        //         name: "uBumpAvailableVec1u".to_string(),
-        //         value: math::Vec1u {
-        //             x: bump_texture_available as u32,
-        //         },
-        //     },
-        //     model::MaterialProperty {
-        //         name: "uMetallicAvailableVec1u".to_string(),
-        //         value: math::Vec1u {
-        //             x: metallic_texture_available as u32,
-        //         },
-        //     },
-        //     model::MaterialProperty {
-        //         name: "uRoughnessAvailableVec1u".to_string(),
-        //         value: math::Vec1u {
-        //             x: roughness_texture_available as u32,
-        //         },
-        //     },
-        // ],
 
         //ToDo: Those are default values, need to replace them with
         //values from the actual raw materials

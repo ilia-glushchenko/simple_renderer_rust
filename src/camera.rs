@@ -15,7 +15,11 @@ pub struct Camera {
 pub fn create_default_camera(width: u32, height: u32) -> Camera {
     Camera {
         view: math::identity_mat4x4(),
-        pos: math::zero_vec3(),
+        pos: math::Vec3f {
+            x: 0.,
+            y: 0.,
+            z: 20.,
+        },
         pitch: 0.,
         yaw: 0.,
         near: 0.1,  //10.0,

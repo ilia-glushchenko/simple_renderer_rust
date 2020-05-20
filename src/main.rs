@@ -23,32 +23,41 @@ mod tex;
 fn load_pbr_sphere() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
     let mut device_model =
         loader::load_device_model_from_obj(Path::new("data/models/pbr-sphere/sphere.obj"));
-    let transforms = vec![
-        math::tranlation_mat4x4(math::Vec3f {
-            x: 0.,
-            y: 0.,
-            z: -1.5,
-        });
-        device_model.meshes.len()
-    ];
 
-    device_model.materials[0].properties_3f[0]
-        .value
-        .data_location
-        .data[0] = math::Vec3f {
+    let mesh = device_model.meshes[0].clone();
+    let mut material = device_model.materials[0].clone();
+    material.properties_3f[0].value.data_location.data[0] = math::Vec3f {
         x: 1.,
         y: 1.,
         z: 1.,
     };
-    device_model.materials[0].properties_1f[0]
-        .value
-        .data_location
-        .data[0] = math::Vec1f { x: 0.95 }; // roughness
+    let mut transforms = Vec::new();
 
-    device_model.materials[0].properties_1f[1]
-        .value
-        .data_location
-        .data[0] = math::Vec1f { x: 0.05 }; // metalness
+    device_model.meshes.clear();
+    device_model.materials.clear();
+
+    for x in (-10..10).step_by(2) {
+        for y in (-10..10).step_by(2) {
+            let mut material = material.clone();
+            material.properties_1f[0].value.data_location.data[0] = math::Vec1f {
+                x: (x + 10) as f32 / 18.,
+            }; // roughness
+            material.properties_1f[1].value.data_location.data[0] = math::Vec1f {
+                x: (y + 10) as f32 / 18.,
+            }; // metalness
+            device_model.materials.push(material);
+
+            let mut mesh = mesh.clone();
+            mesh.material_index = device_model.materials.len() - 1;
+            device_model.meshes.push(mesh.clone());
+
+            transforms.push(math::tranlation_mat4x4(math::Vec3f {
+                x: x as f32 + 1.,
+                y: y as f32 + 1.,
+                z: 0.,
+            }));
+        }
+    }
 
     (device_model, transforms)
 }
@@ -85,9 +94,10 @@ fn load_skybox() -> (
     });
 
     let hdr_skybox_texture = ibl::create_specular_cube_map_texture(
-        &loader::load_host_texture_from_file(&Path::new(
-            "data/materials/hdri/quattro_canti/quattro_canti_8k.hdr",
-        ))
+        &loader::load_host_texture_from_file(
+            &Path::new("data/materials/hdri/quattro_canti/quattro_canti_8k.hdr"),
+            "uHdriSampler2D".to_string(),
+        )
         .unwrap(),
     );
 

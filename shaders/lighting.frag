@@ -44,6 +44,8 @@ float ClampPunctualLightRadiance(float r, float radiance)
     return attenuated_radiance;
 }
 
+// Diffuce BRDF components
+
 float HeavisideStepFunction(float s)
 {
     return s <= 0.0 ? 0.0 : 1.0;
@@ -60,10 +62,8 @@ vec3 SchlickFresnel3(in vec3 f0, in float f90, in float u)
 }
 
 //Moving Frostbite to Physically Based Rendering 3.0 (page 10)
-float DisneyDiceDiffuse(vec3 n, vec3 l, vec3 v, vec3 h, float roughness, vec3 F0)
+float DisneyDiceDiffuse(vec3 n, vec3 l, vec3 v, vec3 h, float lin_roughness, vec3 F0)
 {
-	float lin_roughness = 1 - pow(1 - 0.7 * roughness, 4);
-
 	float NdotV = clamp(abs(dot(n, v)) + EPSILON, 0., 1.);
 	float LdotH = clamp(dot(l, h), 0., 1.);
 	float NdotL = clamp(dot(n, l), 0., 1.);
@@ -111,6 +111,9 @@ vec3 HammonDiffuse(vec3 n, vec3 l, vec3 v, vec3 h, float roughness, vec3 F0, vec
         ((1. - roughness) * f_smooth + roughness * f_rough + albedo * f_multi);
 }
 
+// Cook Torrance BRDF
+// Specular BRDF components
+
 float GGX(vec3 n, vec3 h, float roughness)
 {
     float NoH = dot(n, h);
@@ -145,90 +148,96 @@ vec3 CookTorrance(vec3 n, vec3 l, vec3 v, vec3 h, float roughness, vec3 F0)
         GGX(n, h, roughness);
 }
 
-void lighting()
+//Learn OpenGL PBR
+
+float DistributionGGX(vec3 N, vec3 H, float roughness)
 {
-    vec3 pointLightColor = vec3(1, 0.8, 0.5);
-    //const vec3 pointLightPositionWorld = vec3(0, 1000, -150);
-    const vec3 pointLightPositionWorld = vec3(50, 50, 50);
-
-    //vec4 albedo = texture(uAlbedoMapSampler2D, uv, 0);
-    //float roughness = texture(uRoughnessSampler2D, uv, 0).r;
-
-    vec4 albedo = vec4(vec3(1, 1, 1), 1);
-    float roughness = 0;//uScalarRoughnessVec1f;
-
-	// // derivations of the fragment position
-	// vec3 pos_dx = dFdx( positionWorld );
-	// vec3 pos_dy = dFdy( positionWorld );
-	// // derivations of the texture coordinate
-	// vec2 texC_dx = dFdx( uv );
-	// vec2 texC_dy = dFdy( uv );
-	// // tangent vector and binormal vector
-	// vec3 t = texC_dy.y * pos_dx - texC_dx.y * pos_dy;
-	// vec3 b = texC_dx.x * pos_dy - texC_dy.x * pos_dx;
-
-    // const mat3 TBN = transpose(
-    //     mat3(normalize(t), normalize(b), normalize(normalWorld)));
-    // vec3 n = normalize(texture(uNormalMapSampler2D, uv, 0).rgb * 2 - 1.0);
-    vec3 n = normalize(normalWorld);
-    vec3 l = normalize(pointLightPositionWorld - positionWorld);
-    vec3 v = normalize(cameraPositionWorld - positionWorld);
-    vec3 h = normalize(l + v);
-    float r = length(pointLightPositionWorld - positionWorld);
-    vec3 F0 = vec3(0.562, 0.565, 0.578); //Iron
-    //float radiance = ClampPunctualLightRadiance(r, 1);
-
-    //Disney diffuse
-    //vec3 diffuse_radiance = albedo.xyz * radiance * DisneyDiceDiffuse(n, l, v, h, roughness, F0);
-    //Shirley diffuse
-    //vec3 diffuse_radiance = albedo.xyz * radiance * ShirleyDiffuse(n, l, v, roughness, F0);
-    //Hammon diffuse
-    vec3 diffuse_radiance = HammonDiffuse(n, l, v, h, roughness, F0, albedo.xyz) * 1;
-    vec3 specular_radiance = pointLightColor * 1
-        * CookTorrance(n, l, v, h, roughness, F0);
-    vec3 outgoing_radiance = (diffuse_radiance + specular_radiance) * max(0, dot(n, l));
-
-    outColor = vec4(outgoing_radiance, 1);
-    //outColor = vec4(uScalarAlbedoVec3f, 1);
+    float a      = roughness*roughness;
+    float a2     = a*a;
+    float NdotH  = max(dot(N, H), 0.0);
+    float NdotH2 = NdotH*NdotH;
+	
+    float num   = a2;
+    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+    denom = M_PI * denom * denom;
+	
+    return num / denom;
 }
+
+float GeometrySchlickGGX(float NdotV, float roughness)
+{
+    float r = (roughness + 1.0);
+    float k = (r*r) / 8.0;
+
+    float num   = NdotV;
+    float denom = NdotV * (1.0 - k) + k;
+	
+    return num / denom;
+}
+
+float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
+{
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+    float ggx2  = GeometrySchlickGGX(NdotV, roughness);
+    float ggx1  = GeometrySchlickGGX(NdotL, roughness);
+	
+    return ggx1 * ggx2;
+} 
+
+vec3 fresnelSchlick(float cosTheta, vec3 F0)
+{
+    return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
+}   
 
 void main()
 {
-    vec3 albedoTex = texture(uAlbedoMapSampler2D, uv, 0).rgb;
-    float metalnessTex = texture(uMetallicSampler2D, uv, 0).r;
-    float roughnessTex = texture(uRoughnessSampler2D, uv, 0).r;
+    vec3 point_lights[] = {
+        vec3(-10.0f,  10.0f, 10.0f),
+        vec3( 10.0f,  10.0f, 10.0f),
+        vec3(-10.0f, -10.0f, 10.0f),
+        vec3( 10.0f, -10.0f, 10.0f),
+    };
+    vec3 light_colors[] = {
+        vec3(300.0f, 300.0f, 300.0f),
+        vec3(300.0f, 300.0f, 300.0f),
+        vec3(300.0f, 300.0f, 300.0f),
+        vec3(300.0f, 300.0f, 300.0f)
+    };
 
-    vec3 pointLightColor = vec3(1, 1, 1);
     vec3 albedo = uScalarAlbedoVec3f;
-    float roughness = uScalarRoughnessVec1f;
-    float metalness = uScalarMetalnessVec1f;
+    float roughness = uScalarRoughnessVec1f + 0.01;
+    float metalness = uScalarMetalnessVec1f + 0.01;
 
     vec3 n = normalize(normalWorld);
     vec3 v = normalize(cameraPositionWorld - positionWorld);
     vec3 r = normalize(reflect(v, n));
-    // vec3 l = r;
-    const vec3 pointLightPositionWorld = vec3(0, 0, 10000);
-    vec3 l = normalize(pointLightPositionWorld - positionWorld);
-    vec3 h = normalize(l + v);
-
-    //vec3 diffuse = texture(uDiffuseSamplerCube, r, 0).rgb;
-    vec3 specular = texture(uSpecularSamplerCube, r, 0).rgb;
 
     vec3 F0 = vec3(0.04);
     F0 = mix(F0, albedo, metalness);
+    
+    vec3 Lo = vec3(0);
+    for (int i = 0; i < 4 ; ++i)
+    {
+        vec3 l = normalize(point_lights[i] - positionWorld);
+        vec3 h = normalize(l + v);
 
-    vec3 diffuse_radiance = albedo * DisneyDiceDiffuse(n, l, v, h, roughness, F0);
-    vec3 specular_radiance = pointLightColor * CookTorrance(n, r, v, n, roughness, F0);
+        vec3 radiance = light_colors[i] / pow(length(point_lights[i] - positionWorld), 2);
 
-    vec3 kS = F0;
-    vec3 kD = 1.0 - kS;
-    kD *= 1.0 - metalness;
+        vec3 kS = SchlickFresnel(n, l, F0);
+        vec3 kD = 1.0 - kS;
+        kD *= 1.0 - metalness;
 
-    outColor = vec4(
-        (kD * diffuse_radiance + specular_radiance) 
-        * max(0, dot(n, l))
-    , 1);
+        float NDF = DistributionGGX(n, h, roughness);        
+        float G = GeometrySmith(n, v, l, roughness);      
+        vec3 F = fresnelSchlick(max(dot(h, v), 0.0), F0);  
 
-    // outColor = vec4((kD * diffuse_radiance + specular_radiance), 1);
-    // outColor = vec4(F0, 1);
+        vec3 numerator = NDF * G * F;
+        float denominator = 4.0 * max(dot(n, v), 0.0) * max(dot(n, l), 0.0);
+        vec3 specular = numerator / max(denominator, 0.001); 
+
+        Lo += (kD * albedo / M_PI + specular) * radiance * max(0, dot(n, l));
+    }
+
+    outColor = vec4(Lo, 1);
 }

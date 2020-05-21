@@ -36,15 +36,13 @@ fn load_pbr_sphere() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
     device_model.meshes.clear();
     device_model.materials.clear();
 
-    for x in (-10..10).step_by(2) {
-        for y in (-10..10).step_by(2) {
+    for x in (-10..12).step_by(2) {
+        for y in (-10..12).step_by(2) {
             let mut material = material.clone();
-            material.properties_1f[0].value.data_location.data[0] = math::Vec1f {
-                x: (x + 10) as f32 / 18.,
-            }; // roughness
-            material.properties_1f[1].value.data_location.data[0] = math::Vec1f {
-                x: (y + 10) as f32 / 18.,
-            }; // metalness
+            let roughness = (x + 10) as f32 / 20.;
+            let metalness = (y + 10) as f32 / 20.;
+            material.properties_1f[0].value.data_location.data[0] = math::Vec1f { x: roughness };
+            material.properties_1f[1].value.data_location.data[0] = math::Vec1f { x: metalness };
             device_model.materials.push(material);
 
             let mut mesh = mesh.clone();
@@ -52,8 +50,8 @@ fn load_pbr_sphere() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
             device_model.meshes.push(mesh.clone());
 
             transforms.push(math::tranlation_mat4x4(math::Vec3f {
-                x: x as f32 + 1.,
-                y: y as f32 + 1.,
+                x: x as f32,
+                y: y as f32,
                 z: 0.,
             }));
         }

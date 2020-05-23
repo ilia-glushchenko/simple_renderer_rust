@@ -8,6 +8,7 @@ use crate::tech;
 use crate::tex;
 use std::collections::HashMap;
 use std::ptr::null;
+use std::rc::Rc;
 
 #[derive(Copy, Clone)]
 pub enum PassAttachmentType {
@@ -19,28 +20,32 @@ pub enum PassAttachmentType {
 pub struct OtherPassTextureSource {
     pub pipeline_index: usize,
     pub attachment_index: usize,
-    pub device_texture: tex::DeviceTexture,
+    pub device_texture: Rc<tex::DeviceTexture>,
 }
 
 #[derive(Clone)]
 pub enum PassTextureSource {
     ThisPass,
     OtherPass(OtherPassTextureSource),
+    FreeTexture(Rc<tex::DeviceTexture>),
 }
 
 #[derive(Clone)]
 pub struct PassAttachmentDescriptor {
+    pub texture_desc: tex::DeviceTextureDescriptor,
     pub flavor: PassAttachmentType,
     pub source: PassTextureSource,
+    pub textarget: gl::types::GLenum,
     pub write: bool,
     pub clear: bool,
     pub width: u32,
     pub height: u32,
+    pub mip_level: i32,
 }
 
 #[derive(Clone)]
 pub struct PassAttachment {
-    pub texture: tex::DeviceTexture,
+    pub texture: Rc<tex::DeviceTexture>,
     pub desc: PassAttachmentDescriptor,
 }
 
@@ -84,6 +89,27 @@ pub struct Pass {
     pub height: u32,
 }
 
+impl Pass {
+    pub fn recreate_attachments(
+        &mut self,
+        descriptors: &Vec<PassAttachmentDescriptor>,
+    ) -> Result<(), String> {
+        let mut attachments = create_pass_attachments(descriptors);
+        let framebuffer_object = create_framebuffer_object(&attachments);
+        if let Result::Err(msg) = framebuffer_object {
+            delete_pass_attachments(&mut attachments);
+            return Result::Err(msg);
+        }
+
+        delete_pass_attachments(&mut self.attachments);
+        delete_framebuffer_object(self.fbo);
+        self.attachments = attachments;
+        self.fbo = framebuffer_object.unwrap();
+
+        Ok(())
+    }
+}
+
 pub fn create_render_pass(desc: PassDescriptor) -> Result<Pass, String> {
     let device_program = shader::create_shader_program(&desc.program);
     if let Err(msg) = device_program {
@@ -115,7 +141,7 @@ pub fn create_render_pass(desc: PassDescriptor) -> Result<Pass, String> {
 pub fn delete_render_pass(pass: &mut Pass) {
     shader::delete_shader_program(&mut pass.program);
     delete_pass_attachments(&mut pass.attachments);
-    unsafe { gl::DeleteFramebuffers(1, &pass.fbo as *const u32) };
+    delete_framebuffer_object(pass.fbo);
     pass.dependencies.clear();
 }
 
@@ -132,13 +158,14 @@ pub fn create_framebuffer_object(attachments: &Vec<PassAttachment>) -> Result<u3
     let mut draw_attachments: Vec<u32> = Vec::new();
 
     for attachment in attachments {
-        let attachment_texture_handle = match &attachment.desc.source {
-            PassTextureSource::ThisPass => attachment.texture.handle,
-            PassTextureSource::OtherPass(source) => source.device_texture.handle,
+        let attachment_texture = match &attachment.desc.source {
+            PassTextureSource::ThisPass => attachment.texture.clone(),
+            PassTextureSource::OtherPass(source) => source.device_texture.clone(),
+            PassTextureSource::FreeTexture(texture) => texture.clone(),
         };
 
         unsafe { gl::ActiveTexture(gl::TEXTURE0) };
-        unsafe { gl::BindTexture(gl::TEXTURE_2D, attachment_texture_handle) };
+        unsafe { gl::BindTexture(attachment_texture.target, attachment_texture.handle) };
 
         match attachment.desc.flavor {
             PassAttachmentType::Color(_) => {
@@ -149,9 +176,9 @@ pub fn create_framebuffer_object(attachments: &Vec<PassAttachment>) -> Result<u3
                     gl::FramebufferTexture2D(
                         gl::FRAMEBUFFER,
                         attachment_index,
-                        gl::TEXTURE_2D,
-                        attachment_texture_handle,
-                        0,
+                        attachment.desc.textarget,
+                        attachment_texture.handle,
+                        attachment.desc.mip_level,
                     );
                 }
                 draw_attachments.push(attachment_index);
@@ -167,9 +194,9 @@ pub fn create_framebuffer_object(attachments: &Vec<PassAttachment>) -> Result<u3
                     gl::FramebufferTexture2D(
                         gl::FRAMEBUFFER,
                         gl::DEPTH_ATTACHMENT,
-                        gl::TEXTURE_2D,
-                        attachment_texture_handle,
-                        0,
+                        attachment.desc.textarget,
+                        attachment_texture.handle,
+                        attachment.desc.mip_level,
                     );
                 }
                 depth_attachment_count += 1;
@@ -183,6 +210,10 @@ pub fn create_framebuffer_object(attachments: &Vec<PassAttachment>) -> Result<u3
     }
 
     Result::Ok(handle)
+}
+
+pub fn delete_framebuffer_object(fbo: u32) {
+    unsafe { gl::DeleteFramebuffers(1, &fbo as *const u32) };
 }
 
 pub fn bind_device_model_to_render_pass(device_model: &mut model::DeviceModel, pass: &Pass) {
@@ -389,16 +420,16 @@ pub fn is_render_pass_valid(
                 let dependency = pass
                     .dependencies
                     .iter()
-                    .find(|d| d.sampler.texture.name == sampler.name);
+                    .find(|d| d.sampler.name == sampler.name);
 
-                let material = textures.iter().find(|t| t.texture.name == sampler.name);
+                let material = textures.iter().find(|t| t.name == sampler.name);
 
                 let mut technique_textures: Vec<&model::TextureSampler> = Vec::new();
                 for technique in &pass.techniques {
                     if let Some(texture) = &techniques[technique]
                         .textures
                         .iter()
-                        .find(|t| t.texture.name == sampler.name)
+                        .find(|t| t.name == sampler.name)
                     {
                         technique_textures.push(texture);
                     }
@@ -593,19 +624,14 @@ pub fn create_pass_attachments(descriptors: &Vec<PassAttachmentDescriptor>) -> V
         let attachment = match &desc.source {
             PassTextureSource::ThisPass => match &desc.flavor {
                 PassAttachmentType::Color(_) => {
-                    let device_texture_descriptor =
-                        tex::create_color_attachment_device_texture_descriptor();
                     let attachment_host_texture = tex::create_empty_host_texture(
                         "color_attachment".to_string(),
                         desc.width as usize,
                         desc.height as usize,
-                        tex::convert_gl_format_to_image_depth(device_texture_descriptor.format),
+                        tex::convert_gl_format_to_image_depth(desc.texture_desc.format),
                     );
-                    let attachment_device_texture = tex::create_device_texture(
-                        attachment_host_texture.name.clone(),
-                        &attachment_host_texture,
-                        &device_texture_descriptor,
-                    );
+                    let attachment_device_texture =
+                        tex::create_device_texture(&attachment_host_texture, &desc.texture_desc);
                     PassAttachment {
                         texture: attachment_device_texture,
                         desc: desc.clone(),
@@ -620,7 +646,6 @@ pub fn create_pass_attachments(descriptors: &Vec<PassAttachmentDescriptor>) -> V
                         tex::convert_gl_format_to_image_depth(device_texture_descriptor.format),
                     );
                     let attachment_device_texture = tex::create_device_texture(
-                        attachment_host_texture.name.clone(),
                         &attachment_host_texture,
                         &device_texture_descriptor,
                     );
@@ -632,6 +657,10 @@ pub fn create_pass_attachments(descriptors: &Vec<PassAttachmentDescriptor>) -> V
             },
             PassTextureSource::OtherPass(source) => PassAttachment {
                 texture: source.device_texture.clone(),
+                desc: desc.clone(),
+            },
+            PassTextureSource::FreeTexture(texture) => PassAttachment {
+                texture: texture.clone(),
                 desc: desc.clone(),
             },
         };
@@ -659,14 +688,7 @@ pub fn create_pass_dependencies(
 
     for desc in descriptors {
         dependencies.push(PassDependency {
-            sampler: model::TextureSampler {
-                bindings: Vec::new(),
-                texture: tex::DeviceTexture {
-                    name: desc.name.clone(),
-                    handle: desc.source.device_texture.handle,
-                    target: desc.source.device_texture.target,
-                },
-            },
+            sampler: model::TextureSampler::new(&desc.name, desc.source.device_texture.clone()),
             desc: desc.clone(),
         })
     }

@@ -3,6 +3,7 @@ use crate::math;
 use crate::tech;
 use crate::tex;
 use std::mem::size_of;
+use std::rc::Rc;
 use std::vec::Vec;
 
 pub type Vertices = Vec<math::Vec3f>;
@@ -71,8 +72,19 @@ pub struct SamplerProgramBinding {
 
 #[derive(Clone)]
 pub struct TextureSampler {
+    pub name: String,
     pub bindings: Vec<SamplerProgramBinding>,
-    pub texture: tex::DeviceTexture,
+    pub texture: Rc<tex::DeviceTexture>,
+}
+
+impl TextureSampler {
+    pub fn new(name: &str, texture: Rc<tex::DeviceTexture>) -> TextureSampler {
+        TextureSampler {
+            name: name.to_string(),
+            bindings: Vec::new(),
+            texture: texture,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -155,7 +167,6 @@ pub fn delete_device_model(device_model: DeviceModel) {
     }
 }
 
-#[allow(clippy::ptr_arg)]
 fn create_model_attributes(
     vertices: &Vertices,
     normals: &Normals,
@@ -168,34 +179,31 @@ fn create_model_attributes(
     let mut attributes: Vec<MeshAttribute> = Vec::new();
 
     if !vertices.is_empty() {
-        attributes.push(create_model_attribute(&vertices, "aPosition".to_string()));
+        attributes.push(create_model_attribute(&vertices, "aPosition"));
     }
     if !normals.is_empty() {
-        attributes.push(create_model_attribute(&normals, "aNormal".to_string()));
+        attributes.push(create_model_attribute(&normals, "aNormal"));
     }
     if !tangents.is_empty() {
-        attributes.push(create_model_attribute(&tangents, "aTangent".to_string()));
+        attributes.push(create_model_attribute(&tangents, "aTangent"));
     }
     if !bitangents.is_empty() {
-        attributes.push(create_model_attribute(
-            &bitangents,
-            "aBitangent".to_string(),
-        ));
+        attributes.push(create_model_attribute(&bitangents, "aBitangent"));
     }
     if !uvs.is_empty() {
-        attributes.push(create_model_attribute(&uvs, "aUV".to_string()));
+        attributes.push(create_model_attribute(&uvs, "aUV"));
     }
 
     attributes
 }
 
-fn create_model_attribute<T>(_: &[T], name: String) -> MeshAttribute
+fn create_model_attribute<T>(_: &[T], name: &str) -> MeshAttribute
 where
     T: math::VecDimensions<T>,
     T: math::VecGLTypeTrait,
 {
     MeshAttribute {
-        name,
+        name: name.to_string(),
         dimensions: T::DIMENSIONS as i32,
         stride: size_of::<T>() as i32,
         data_type: <T as math::VecGLTypeTrait>::GL_TYPE,
@@ -238,8 +246,8 @@ fn create_device_material(material: &HostMaterial) -> DeviceMaterial {
         for property in &material.properties_samplers {
             properties.push(MaterialProperty {
                 name: property.name.clone(),
-                value: create_material_texture(
-                    property.name.clone(),
+                value: create_material_texture_sampler(
+                    &property.name,
                     &property.value,
                     &tex::create_color_device_texture_descriptor(&property.value),
                 ),
@@ -263,14 +271,15 @@ fn delete_device_material(device_material: DeviceMaterial) {
     }
 }
 
-fn create_material_texture(
-    name: String,
+fn create_material_texture_sampler(
+    name: &str,
     host_texture: &tex::HostTexture,
     desc: &tex::DeviceTextureDescriptor,
 ) -> TextureSampler {
     TextureSampler {
+        name: name.to_string(),
         bindings: Vec::new(),
-        texture: tex::create_device_texture(name, host_texture, desc),
+        texture: tex::create_device_texture(host_texture, desc),
     }
 }
 

@@ -6,6 +6,7 @@ layout (location = 0) out vec4 outColor;
 
 void main()
 {
-    vec3 color = texture(uSkyboxSamplerCube, -texCoord, 0).rgb;
+    // vec3 color = texture(uSkyboxSamplerCube, -texCoord, 0).rgb;
+    vec3 color = textureLod(uSkyboxSamplerCube, -texCoord, 3).rgb;
     outColor = vec4(color, 1);
 }

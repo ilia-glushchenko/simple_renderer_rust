@@ -178,3 +178,10 @@ pub fn create_full_screen_triangle_host_mesh() -> model::HostMesh {
 
     model::create_host_mesh(0, vertices, normals, tangents, bitangents, uvs, indices)
 }
+
+pub fn create_full_screen_triangle_model() -> model::DeviceModel {
+    model::create_device_model(&model::HostModel {
+        meshes: vec![create_full_screen_triangle_host_mesh()],
+        materials: vec![model::create_empty_host_material()],
+    })
+}

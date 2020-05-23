@@ -13,8 +13,9 @@ layout (binding = 1, location = 31) uniform sampler2D uNormalMapSampler2D;
 layout (binding = 2, location = 32) uniform sampler2D uBumpMapSampler2D;
 layout (binding = 3, location = 33) uniform sampler2D uMetallicSampler2D;
 layout (binding = 4, location = 34) uniform sampler2D uRoughnessSampler2D;
-layout (binding = 5, location = 35) uniform samplerCube uSpecularSamplerCube;
-layout (binding = 6, location = 36) uniform samplerCube uDiffuseSamplerCube;
+layout (binding = 5, location = 35) uniform samplerCube uDiffuseSamplerCube;
+layout (binding = 6, location = 36) uniform sampler2D uBrdfLUTSampler2D;
+layout (binding = 7, location = 37) uniform samplerCube uEnvMapSamplerCube;
 
 layout (location = 0) in vec3 normalModel;
 layout (location = 1) in vec3 tangentModel;
@@ -100,11 +101,11 @@ float DistributionGGX(vec3 N, vec3 H, float roughness)
     float a2     = a*a;
     float NdotH  = max(dot(N, H), 0.0);
     float NdotH2 = NdotH*NdotH;
-	
+
     float num   = a2;
     float denom = (NdotH2 * (a2 - 1.0) + 1.0);
     denom = M_PI * denom * denom;
-	
+
     return num / denom;
 }
 
@@ -115,7 +116,7 @@ float GeometrySchlickGGX(float NdotV, float roughness)
 
     float num   = NdotV;
     float denom = NdotV * (1.0 - k) + k;
-	
+
     return num / denom;
 }
 
@@ -125,19 +126,19 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
     float NdotL = max(dot(N, L), 0.0);
     float ggx2  = GeometrySchlickGGX(NdotV, roughness);
     float ggx1  = GeometrySchlickGGX(NdotL, roughness);
-	
+
     return ggx1 * ggx2;
-} 
+}
 
 vec3 UnrealCookTorrance(vec3 n, vec3 l, vec3 v, vec3 h, float roughness, vec3 F0)
 {
-    float NDF = DistributionGGX(n, h, roughness);        
-    float G = GeometrySmith(n, v, l, roughness);      
-    vec3 F = FresnelSchlick(max(dot(h, v), 0.0), F0);  
+    float NDF = DistributionGGX(n, h, roughness);
+    float G = GeometrySmith(n, v, l, roughness);
+    vec3 F = FresnelSchlick(max(dot(h, v), 0.0), F0);
 
     vec3 numerator = NDF * G * F;
     float denominator = 4.0 * max(dot(n, v), 0.0) * max(dot(n, l), 0.0);
-    vec3 specular = numerator / max(denominator, 0.001); 
+    vec3 specular = numerator / max(denominator, 0.001);
 
     return specular;
 }
@@ -235,32 +236,38 @@ void main()
 
     vec3 F0 = vec3(0.04);
     F0 = mix(F0, albedo, metalness);
-    
+
     vec3 Lo = vec3(0);
     for (int i = 0; i < 4 ; ++i)
     {
         vec3 l = normalize(point_lights[i] - positionWorld);
         vec3 h = normalize(l + v);
 
-        vec3 kS = FresnelSchlick(max(dot(h, v), 0.0), F0); 
+        vec3 kS = FresnelSchlick(max(dot(h, v), 0.0), F0);
         vec3 kD = (1.0 - kS) * (1.0 - metalness);
 
         vec3 radiance = light_colors[i] * ClampPunctualLightRadiance(
             length(point_lights[i] - positionWorld), light_radiances[i]);
-        
+
         Lo += (
             kD * HammonDiffuse(n, l, v, h, roughness, F0, albedo)
             + ForstbiteCookTorrance(n, l, v, h, roughness * roughness, F0)
         ) * radiance * max(0, dot(n, l));
     }
 
-    vec3 kS = FresnelSchlickRoughness(max(dot(n, v), 0.0), F0, roughness); 
+    vec3 kS = FresnelSchlickRoughness(max(dot(n, v), 0.0), F0, roughness);
     vec3 kD = 1.0 - kS;
-    kD *= 1.0 - metalness;	  
+    kD *= 1.0 - metalness;
     vec3 irradiance = texture(uDiffuseSamplerCube, -n).rgb;
     vec3 diffuse = irradiance * albedo;
-    vec3 ambient = (kD * diffuse);
 
+    const float MAX_REFLECTION_LOD = 7.0;
+    vec3 prefilteredColor = textureLod(uEnvMapSamplerCube, r, roughness * MAX_REFLECTION_LOD).rgb;
+    vec3 F        = FresnelSchlickRoughness(max(dot(n, v), 0.0), F0, roughness);
+    vec2 envBRDF  = texture(uBrdfLUTSampler2D, vec2(max(dot(n, v), 0.0), roughness)).rg;
+    vec3 specular = prefilteredColor * (F * envBRDF.x + envBRDF.y);
+
+    vec3 ambient = (kD * diffuse + specular);
     vec3 color = ambient + Lo;
 
     outColor = vec4(color, 1);

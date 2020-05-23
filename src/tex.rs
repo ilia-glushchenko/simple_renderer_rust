@@ -1,5 +1,6 @@
 use std::ffi::c_void;
 use std::ptr::null;
+use std::rc::Rc;
 
 #[derive(Clone)]
 pub enum HostTextureData {
@@ -30,11 +31,11 @@ pub struct HostCubeMapTexture {
 
 #[derive(Clone)]
 pub struct DeviceTexture {
-    pub name: String,
     pub handle: u32,
     pub target: gl::types::GLenum,
 }
 
+#[derive(Clone)]
 pub struct DeviceTextureDescriptor {
     pub target: gl::types::GLenum,
     pub s_wrap: gl::types::GLenum,
@@ -95,7 +96,7 @@ pub fn create_color_attachment_device_texture_descriptor() -> DeviceTextureDescr
         internal_format: gl::RGBA32F,
         format: gl::RGBA,
         data_type: gl::FLOAT,
-        use_mipmaps: false,
+        use_mipmaps: true,
     }
 }
 
@@ -133,10 +134,11 @@ pub fn create_empty_host_texture(
 }
 
 pub fn create_device_texture(
-    name: String,
     host_texture: &HostTexture,
     desc: &DeviceTextureDescriptor,
-) -> DeviceTexture {
+) -> Rc<DeviceTexture> {
+    assert_eq!(desc.target, gl::TEXTURE_2D);
+
     let mut handle: u32 = 0;
     unsafe { gl::GenTextures(1, &mut handle as *mut u32) };
     assert!(handle != 0, "Failed to generate texture");
@@ -197,11 +199,10 @@ pub fn create_device_texture(
         }
     }
 
-    DeviceTexture {
-        name,
+    Rc::new(DeviceTexture {
         handle,
         target: desc.target,
-    }
+    })
 }
 
 pub fn delete_device_texture(device_texture: &DeviceTexture) {

@@ -29,6 +29,18 @@ pub struct Uniform<T> {
     pub data_location: UniformDataLoction<T>,
 }
 
+impl<T> Uniform<T> {
+    pub fn new(name: &str, data: Vec<T>) -> Uniform<T> {
+        Uniform::<T> {
+            name: name.to_string(),
+            data_location: UniformDataLoction {
+                locations: Vec::new(),
+                data,
+            },
+        }
+    }
+}
+
 pub struct Uniforms {
     pub vec1f: Vec<Uniform<math::Vec1f>>,
     pub vec1u: Vec<Uniform<math::Vec1u>>,
@@ -40,6 +52,24 @@ pub struct Uniforms {
 pub struct PerModelUnifrom<T> {
     pub name: String,
     pub data_locations: Vec<UniformDataLoction<T>>,
+}
+
+impl<T> PerModelUnifrom<T>
+where
+    T: std::clone::Clone,
+{
+    pub fn new(name: &str, data: Vec<Vec<T>>) -> PerModelUnifrom<T> {
+        PerModelUnifrom::<T> {
+            name: name.to_string(),
+            data_locations: data
+                .iter()
+                .map(|x| UniformDataLoction {
+                    locations: Vec::new(),
+                    data: x.clone(),
+                })
+                .collect(),
+        }
+    }
 }
 
 pub struct PerModelUniforms {
@@ -55,6 +85,29 @@ pub struct Technique {
     pub per_frame_uniforms: Uniforms,
     pub per_model_uniforms: PerModelUniforms,
     pub textures: Vec<model::TextureSampler>,
+}
+
+impl Technique {
+    pub fn new(name: &str) -> Technique {
+        Technique {
+            name: name.to_string(),
+            per_frame_uniforms: Uniforms {
+                vec1f: Vec::new(),
+                vec1u: Vec::new(),
+                vec2f: Vec::new(),
+                vec3f: Vec::new(),
+                mat4x4f: Vec::new(),
+            },
+            per_model_uniforms: PerModelUniforms {
+                vec1f: Vec::new(),
+                vec1u: Vec::new(),
+                vec2f: Vec::new(),
+                vec3f: Vec::new(),
+                mat4x4f: Vec::new(),
+            },
+            textures: Vec::new(),
+        }
+    }
 }
 
 #[derive(Hash, PartialEq, Clone)]
@@ -497,11 +550,7 @@ pub fn bind_shader_program_to_texture_sampler(
     program: &shader::ShaderProgram,
     sampler: &mut model::TextureSampler,
 ) {
-    if let Some(program_texture) = program
-        .samplers
-        .iter()
-        .find(|x| x.name == sampler.texture.name)
-    {
+    if let Some(program_texture) = program.samplers.iter().find(|x| x.name == sampler.name) {
         sampler.bindings.push(model::SamplerProgramBinding {
             binding: program_texture.binding,
             program: program.handle,
@@ -509,7 +558,7 @@ pub fn bind_shader_program_to_texture_sampler(
     } else {
         log::log_warning(format!(
             "Failed to find sampler with name: '{}' in shader program id: '{}' name: '{}'",
-            sampler.texture.name, program.handle, program.name
+            sampler.name, program.handle, program.name
         ))
     }
 }
@@ -641,11 +690,7 @@ fn bind_texture_samplers_to_shader_program(
     );
 
     for texture in textures.iter_mut() {
-        if let Some(program_sampler) = program
-            .samplers
-            .iter()
-            .find(|x| x.name == texture.texture.name)
-        {
+        if let Some(program_sampler) = program.samplers.iter().find(|x| x.name == texture.name) {
             texture.bindings.push(model::SamplerProgramBinding {
                 binding: program_sampler.binding,
                 program: program.handle,
@@ -653,7 +698,7 @@ fn bind_texture_samplers_to_shader_program(
         } else {
             log::log_warning(format!(
                 "Failed to find '{}' sampler location in program id: '{}' name: '{}'",
-                texture.texture.name, program.handle, program.name
+                texture.name, program.handle, program.name
             ));
         }
     }

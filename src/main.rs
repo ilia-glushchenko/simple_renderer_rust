@@ -1,6 +1,7 @@
 use glfw::Context;
 use std::collections::HashMap;
 use std::path::Path;
+use std::rc::Rc;
 
 mod app;
 mod buffer;
@@ -37,11 +38,7 @@ fn load_pbr_sphere() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
 
     let mesh = device_model.meshes[0].clone();
     let mut material = device_model.materials[0].clone();
-    material.properties_3f[0].value.data_location.data[0] = math::Vec3f {
-        x: 1.,
-        y: 1.,
-        z: 1.,
-    };
+    material.properties_3f[0].value.data_location.data[0] = math::Vec3f::new(1., 1., 1.);
     let mut transforms = Vec::new();
 
     device_model.meshes.clear();
@@ -76,11 +73,7 @@ fn load_pbr_spheres() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
     let device_model =
         loader::load_device_model_from_obj(Path::new("data/models/pbr-spheres/spheres.obj"));
     let transforms = vec![
-        math::tranlation_mat4x4(math::Vec3f {
-            x: -25.,
-            y: -25.,
-            z: -65.
-        });
+        math::tranlation_mat4x4(math::Vec3f::new(-25., -25., -65.));
         device_model.meshes.len()
     ];
 
@@ -90,17 +83,14 @@ fn load_pbr_spheres() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
 #[allow(dead_code)]
 fn load_skybox() -> (
     model::DeviceModel,
-    tex::DeviceTexture,
-    tex::DeviceTexture,
+    Rc<tex::DeviceTexture>,
+    Rc<tex::DeviceTexture>,
+    Rc<tex::DeviceTexture>,
     math::Mat4x4f,
 ) {
     let mut device_model = loader::load_device_model_from_obj(Path::new("data/models/box/box.obj"));
     device_model.materials = vec![model::create_empty_device_material()];
-    let transform = math::scale_mat4x4(math::Vec3f {
-        x: 100.,
-        y: 100.,
-        z: 100.,
-    });
+    let transform = math::scale_mat4x4(math::Vec3f::new(100., 100., 100.));
 
     let hdr_skybox_texture = ibl::create_specular_cube_map_texture(
         &loader::load_host_texture_from_file(
@@ -110,12 +100,15 @@ fn load_skybox() -> (
         .unwrap(),
     );
 
-    let hdr_diffuse_skybox = ibl::create_diffuse_cube_map_texture(&hdr_skybox_texture);
+    let hdr_diffuse_skybox = ibl::create_diffuse_cube_map_texture(hdr_skybox_texture.clone());
+
+    let prefiltered_env_map = ibl::create_prefiltered_environment_map(hdr_skybox_texture.clone());
 
     (
         device_model,
         hdr_skybox_texture,
         hdr_diffuse_skybox,
+        prefiltered_env_map,
         transform,
     )
 }
@@ -129,13 +122,6 @@ fn load_sponza() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
     (device_model, transforms)
 }
 
-fn load_full_screen_triangle_model() -> model::DeviceModel {
-    model::create_device_model(&model::HostModel {
-        meshes: vec![helper::create_full_screen_triangle_host_mesh()],
-        materials: vec![model::create_empty_host_material()],
-    })
-}
-
 fn main_loop(window: &mut app::Window) {
     let mut input_data: input::Data = input::Data {
         keys: HashMap::new(),
@@ -145,8 +131,10 @@ fn main_loop(window: &mut app::Window) {
         },
     };
 
-    let mut fullscreen_model = load_full_screen_triangle_model();
-    let (mut skybox_model, specular_skybox, diffuse_skybox, skybox_transform) = load_skybox();
+    let mut fullscreen_model = helper::create_full_screen_triangle_model();
+    let brdf_lut = ibl::create_brdf_lut();
+    let (mut skybox_model, specular_skybox, diffuse_skybox, env_map, skybox_transform) =
+        load_skybox();
     let (mut device_model_full, transforms) = load_pbr_sphere();
     let mut device_model_short = model::DeviceModel {
         meshes: device_model_full.meshes.clone(),
@@ -160,8 +148,8 @@ fn main_loop(window: &mut app::Window) {
 
     let (mvp_technique, lighting_technique, skybox_technique, tone_mapping) = {
         let mvp = techniques::mvp::create(&camera, &transforms);
-        let lighting = techniques::lighting::create(&specular_skybox, &diffuse_skybox, &camera);
-        let skybox = techniques::skybox::create(specular_skybox.clone(), &camera, skybox_transform);
+        let lighting = techniques::lighting::create(diffuse_skybox, brdf_lut, env_map, &camera);
+        let skybox = techniques::skybox::create(specular_skybox, &camera, skybox_transform);
         let tone_mapping = techniques::tone_mapping::create();
 
         if let Err(msg) = tech::is_technique_valid(&mvp) {

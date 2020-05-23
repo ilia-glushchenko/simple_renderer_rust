@@ -4,6 +4,7 @@ use crate::model;
 use crate::pass;
 use crate::shader;
 use crate::tech;
+use crate::tex;
 
 pub fn create_render_pipeline(
     techniques: &mut tech::TechniqueMap,
@@ -20,12 +21,15 @@ pub fn create_render_pipeline(
         },
         techniques: vec![tech::Techniques::MVP],
         attachments: vec![pass::PassAttachmentDescriptor {
+            texture_desc: tex::create_depth_device_texture_descriptor(),
             flavor: pass::PassAttachmentType::Depth(1., gl::LESS),
             source: pass::PassTextureSource::ThisPass,
+            textarget: gl::TEXTURE_2D,
             clear: true,
             write: true,
             width: window.width,
             height: window.height,
+            mip_level: 0,
         }],
         dependencies: Vec::new(),
         width: window.width,
@@ -48,24 +52,30 @@ pub fn create_render_pipeline(
         techniques: vec![tech::Techniques::MVP, tech::Techniques::Lighting],
         attachments: vec![
             pass::PassAttachmentDescriptor {
+                texture_desc: tex::create_depth_device_texture_descriptor(),
                 flavor: pass::PassAttachmentType::Depth(1., gl::EQUAL),
                 source: pass::PassTextureSource::OtherPass(pass::OtherPassTextureSource {
                     pipeline_index: 0,
                     attachment_index: 0,
                     device_texture: depth_pre_pass.attachments[0].texture.clone(),
                 }),
+                textarget: gl::TEXTURE_2D,
                 clear: false,
                 write: false,
                 width: window.width,
                 height: window.height,
+                mip_level: 0,
             },
             pass::PassAttachmentDescriptor {
+                texture_desc: tex::create_color_attachment_device_texture_descriptor(),
                 flavor: pass::PassAttachmentType::Color(clear_color),
                 source: pass::PassTextureSource::ThisPass,
+                textarget: gl::TEXTURE_2D,
                 clear: true,
                 write: true,
                 width: window.width,
                 height: window.height,
+                mip_level: 0,
             },
         ],
         dependencies: Vec::new(),
@@ -89,28 +99,34 @@ pub fn create_render_pipeline(
         techniques: vec![tech::Techniques::Skybox],
         attachments: vec![
             pass::PassAttachmentDescriptor {
+                texture_desc: tex::create_depth_device_texture_descriptor(),
                 flavor: pass::PassAttachmentType::Depth(1., gl::LESS),
                 source: pass::PassTextureSource::OtherPass(pass::OtherPassTextureSource {
                     pipeline_index: 0,
                     attachment_index: 0,
                     device_texture: depth_pre_pass.attachments[0].texture.clone(),
                 }),
+                textarget: gl::TEXTURE_2D,
                 clear: false,
                 write: false,
                 width: window.width,
                 height: window.height,
+                mip_level: 0,
             },
             pass::PassAttachmentDescriptor {
+                texture_desc: tex::create_color_attachment_device_texture_descriptor(),
                 flavor: pass::PassAttachmentType::Color(clear_color),
                 source: pass::PassTextureSource::OtherPass(pass::OtherPassTextureSource {
                     pipeline_index: 1,
                     attachment_index: 1,
                     device_texture: lighting_pass.attachments[1].texture.clone(),
                 }),
+                textarget: gl::TEXTURE_2D,
                 clear: false,
                 write: true,
                 width: window.width,
                 height: window.height,
+                mip_level: 0,
             },
         ],
         dependencies: Vec::new(),
@@ -134,12 +150,15 @@ pub fn create_render_pipeline(
         techniques: vec![tech::Techniques::ToneMapping],
 
         attachments: vec![pass::PassAttachmentDescriptor {
+            texture_desc: tex::create_color_attachment_device_texture_descriptor(),
             flavor: pass::PassAttachmentType::Color(clear_color),
             source: pass::PassTextureSource::ThisPass,
+            textarget: gl::TEXTURE_2D,
             clear: true,
             write: true,
             width: window.width,
             height: window.height,
+            mip_level: 0,
         }],
         dependencies: vec![pass::PassDependencyDescriptor {
             name: "uColorSampler2D".to_string(),

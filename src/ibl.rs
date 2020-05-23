@@ -1,3 +1,4 @@
+use crate::helper;
 use crate::loader;
 use crate::math;
 use crate::model;
@@ -10,8 +11,9 @@ use std::f32;
 use std::ffi::c_void;
 use std::path::Path;
 use std::ptr::null;
+use std::rc::Rc;
 
-pub fn create_specular_cube_map_texture(host_texture: &tex::HostTexture) -> tex::DeviceTexture {
+pub fn create_specular_cube_map_texture(host_texture: &tex::HostTexture) -> Rc<tex::DeviceTexture> {
     let width: u32 = 2048;
     let height: u32 = 2048;
 
@@ -22,26 +24,102 @@ pub fn create_specular_cube_map_texture(host_texture: &tex::HostTexture) -> tex:
     let desc = tex::create_spherical_hdri_texture_descriptor(&host_texture);
     let cubemap = create_cubemap(&desc, width, height, &fbos);
 
-    cleanup_cubempa_fbos(fbos, &mut techs, pass, box_model);
+    cleanup_cubemap_fbos(fbos, &mut techs, pass, box_model);
     tech::delete_techniques(techs);
 
     cubemap
 }
 
-pub fn create_diffuse_cube_map_texture(cube_map: &tex::DeviceTexture) -> tex::DeviceTexture {
+pub fn create_diffuse_cube_map_texture(cube_map: Rc<tex::DeviceTexture>) -> Rc<tex::DeviceTexture> {
     let width: u32 = 32;
     let height: u32 = 32;
 
-    let (mut techs, mut pass, box_model) = create_cubemap_convolution_pass(cube_map, width, height);
+    let (mut techs, mut pass, box_model) =
+        create_diffuse_cubemap_convolution_pass(cube_map, width, height);
 
     let fbos = draw_cubemap(&mut techs, &mut pass, &box_model);
 
     let desc = tex::create_color_attachment_device_texture_descriptor();
     let cubemap = create_cubemap(&desc, width, height, &fbos);
 
-    cleanup_cubempa_fbos(fbos, &mut techs, pass, box_model);
+    cleanup_cubemap_fbos(fbos, &mut techs, pass, box_model);
 
     cubemap
+}
+
+pub fn create_brdf_lut() -> Rc<tex::DeviceTexture> {
+    let width: u32 = 128;
+    let height: u32 = 128;
+
+    let (mut techs, mut pass, mut model) = create_brdf_integration_map_pass(width, height);
+    pass::execute_render_pass(&pass, &techs, &model);
+
+    let result = pass.attachments[0].texture.clone();
+    pass.attachments.clear();
+
+    pass::unbind_techniques_from_render_pass(&mut techs, pass.program.handle);
+    pass::unbind_device_model_from_render_pass(&mut model, pass.program.handle);
+    pass::unbind_techniques_from_render_pass(&mut techs, pass.program.handle);
+    pass::delete_render_pass(&mut pass);
+    model::delete_device_model(model);
+
+    result
+}
+
+pub fn create_prefiltered_environment_map(
+    cube_map: Rc<tex::DeviceTexture>,
+) -> Rc<tex::DeviceTexture> {
+    let width = 128;
+    let height = 128;
+
+    let mut desc = tex::create_color_attachment_device_texture_descriptor();
+    desc.min_filter = gl::LINEAR_MIPMAP_LINEAR;
+    desc.mag_filter = gl::LINEAR;
+    let map = create_empty_cubemap(&desc, width, height);
+
+    let (mut techs, mut pass, model) =
+        create_prefiltered_environment_map_pass(cube_map, map.clone(), width, height);
+
+    let views = [
+        math::y_rotation_mat4x4(-f32::consts::PI),
+        math::identity_mat4x4(),
+        math::x_rotation_mat4x4(f32::consts::PI / 2.)
+            * math::y_rotation_mat4x4(f32::consts::PI / 2.),
+        math::x_rotation_mat4x4(-f32::consts::PI / 2.)
+            * math::y_rotation_mat4x4(f32::consts::PI / 2.),
+        math::y_rotation_mat4x4(f32::consts::PI / 2.),
+        math::y_rotation_mat4x4(-f32::consts::PI / 2.),
+    ];
+
+    for mip_level in 0..8 {
+        let roughness = mip_level as f32 / 7_f32;
+
+        let width = (width as f32 * 0.5_f32.powf(mip_level as f32)) as u32;
+        let height = (height as f32 * 0.5_f32.powf(mip_level as f32)) as u32;
+
+        for face_index in 0..6 {
+            pass.recreate_attachments(&create_env_map_attachment_descriptors(
+                map.clone(),
+                (gl::TEXTURE_CUBE_MAP_POSITIVE_X as usize + face_index) as gl::types::GLenum,
+                width,
+                height,
+                mip_level,
+            ))
+            .unwrap();
+            pass.width = width;
+            pass.height = height;
+
+            techniques::ibl::prefiltered_envirnoment_map::update(
+                techs.get_mut(&tech::Techniques::IBL).unwrap(),
+                views[face_index],
+                roughness,
+            );
+
+            pass::execute_render_pass(&pass, &techs, &model);
+        }
+    }
+
+    map
 }
 
 struct PassFbo {
@@ -63,7 +141,7 @@ fn create_cubemap(
     width: u32,
     height: u32,
     fbos: &CubeMapFbos,
-) -> tex::DeviceTexture {
+) -> Rc<tex::DeviceTexture> {
     let mut handle: u32 = 0;
 
     unsafe {
@@ -136,17 +214,73 @@ fn create_cubemap(
             desc.min_filter as i32,
         );
 
+        if desc.use_mipmaps {
+            gl::GenerateMipmap(gl::TEXTURE_CUBE_MAP);
+        }
+
         gl::BindTexture(gl::TEXTURE_CUBE_MAP, 0);
     }
 
-    tex::DeviceTexture {
-        name: "uSkyboxSamplerCube".to_string(),
+    Rc::new(tex::DeviceTexture {
         handle,
         target: gl::TEXTURE_CUBE_MAP,
-    }
+    })
 }
 
-fn cleanup_cubempa_fbos(
+fn create_empty_cubemap(
+    desc: &tex::DeviceTextureDescriptor,
+    width: u32,
+    height: u32,
+) -> Rc<tex::DeviceTexture> {
+    let mut handle: u32 = 0;
+
+    unsafe {
+        gl::GenTextures(1, &mut handle as *mut u32);
+        assert!(handle != 0, "Failed to generate texture");
+        gl::BindTexture(gl::TEXTURE_CUBE_MAP, handle);
+
+        for i in 0..6 {
+            gl::TexImage2D(
+                (gl::TEXTURE_CUBE_MAP_POSITIVE_X as usize + i) as gl::types::GLenum,
+                0,
+                desc.internal_format as i32,
+                width as i32,
+                height as i32,
+                0,
+                desc.format,
+                desc.data_type,
+                null() as *const c_void,
+            );
+        }
+
+        gl::TexParameteri(gl::TEXTURE_CUBE_MAP, gl::TEXTURE_WRAP_S, desc.s_wrap as i32);
+        gl::TexParameteri(gl::TEXTURE_CUBE_MAP, gl::TEXTURE_WRAP_T, desc.t_wrap as i32);
+        gl::TexParameteri(gl::TEXTURE_CUBE_MAP, gl::TEXTURE_WRAP_R, desc.r_wrap as i32);
+        gl::TexParameteri(
+            gl::TEXTURE_CUBE_MAP,
+            gl::TEXTURE_MAG_FILTER,
+            desc.mag_filter as i32,
+        );
+        gl::TexParameteri(
+            gl::TEXTURE_CUBE_MAP,
+            gl::TEXTURE_MIN_FILTER,
+            desc.min_filter as i32,
+        );
+
+        if desc.use_mipmaps {
+            gl::GenerateMipmap(gl::TEXTURE_CUBE_MAP);
+        }
+
+        gl::BindTexture(gl::TEXTURE_CUBE_MAP, 0);
+    }
+
+    Rc::new(tex::DeviceTexture {
+        handle,
+        target: gl::TEXTURE_CUBE_MAP,
+    })
+}
+
+fn cleanup_cubemap_fbos(
     mut fbos: CubeMapFbos,
     techs: &mut tech::TechniqueMap,
     mut pass: pass::Pass,
@@ -241,7 +375,6 @@ fn create_hdri_2_cube_map_pass(
         techniques::ibl::hdri2cube::create(
             math::perspective_projection_mat4x4(f32::consts::PI / 2.0, 1., 0.98, 1.01),
             tex::create_device_texture(
-                "uHdriSampler2D".to_string(),
                 &host_texture,
                 &tex::create_spherical_hdri_texture_descriptor(&host_texture),
             ),
@@ -252,18 +385,21 @@ fn create_hdri_2_cube_map_pass(
         name: "HDRI 2 Cube".to_string(),
         program: shader::HostShaderProgramDescriptor {
             name: "HDIR 2 Cube".to_string(),
-            vert_shader_file_path: "shaders/ibl/hdri2cube.vert".to_string(),
+            vert_shader_file_path: "shaders/ibl/cube_map_pass_through.vert".to_string(),
             frag_shader_file_path: "shaders/ibl/hdri2cube.frag".to_string(),
         },
         techniques: vec![tech::Techniques::IBL],
 
         attachments: vec![pass::PassAttachmentDescriptor {
+            texture_desc: tex::create_color_attachment_device_texture_descriptor(),
             flavor: pass::PassAttachmentType::Color(math::zero_vec4()),
             source: pass::PassTextureSource::ThisPass,
+            textarget: gl::TEXTURE_2D,
             write: true,
             clear: true,
             width,
             height,
+            mip_level: 0,
         }],
         dependencies: Vec::new(),
 
@@ -285,21 +421,17 @@ fn create_hdri_2_cube_map_pass(
     (techs, pass, box_model)
 }
 
-fn create_cubemap_convolution_pass(
-    cube_map: &tex::DeviceTexture,
+fn create_diffuse_cubemap_convolution_pass(
+    cube_map: Rc<tex::DeviceTexture>,
     width: u32,
     height: u32,
 ) -> (tech::TechniqueMap, pass::Pass, model::DeviceModel) {
     let mut techs = tech::TechniqueMap::new();
     techs.insert(
         tech::Techniques::IBL,
-        techniques::ibl::cubemap_convolution::create(
+        techniques::ibl::diffuse_cubemap_convolution::create(
             math::perspective_projection_mat4x4(f32::consts::PI / 2.0, 1., 0.98, 1.01),
-            tex::DeviceTexture {
-                name: "uSkyboxSamplerCube".to_string(),
-                handle: cube_map.handle,
-                target: cube_map.target,
-            },
+            cube_map,
         ),
     );
 
@@ -307,18 +439,21 @@ fn create_cubemap_convolution_pass(
         name: "Cubemap Convolution".to_string(),
         program: shader::HostShaderProgramDescriptor {
             name: "Cubemap Convolution".to_string(),
-            vert_shader_file_path: "shaders/ibl/diffuse_cube_map_convolution.vert".to_string(),
+            vert_shader_file_path: "shaders/ibl/cube_map_pass_through.vert".to_string(),
             frag_shader_file_path: "shaders/ibl/diffuse_cube_map_convolution.frag".to_string(),
         },
         techniques: vec![tech::Techniques::IBL],
 
         attachments: vec![pass::PassAttachmentDescriptor {
+            texture_desc: tex::create_color_attachment_device_texture_descriptor(),
             flavor: pass::PassAttachmentType::Color(math::zero_vec4()),
             source: pass::PassTextureSource::ThisPass,
+            textarget: gl::TEXTURE_2D,
             write: true,
             clear: true,
             width,
             height,
+            mip_level: 0,
         }],
         dependencies: Vec::new(),
 
@@ -339,13 +474,138 @@ fn create_cubemap_convolution_pass(
     (techs, pass, box_model)
 }
 
-fn create_attachments(width: u32, height: u32) -> Vec<pass::PassAttachment> {
-    pass::create_pass_attachments(&vec![pass::PassAttachmentDescriptor {
+fn create_brdf_integration_map_pass(
+    width: u32,
+    height: u32,
+) -> (tech::TechniqueMap, pass::Pass, model::DeviceModel) {
+    let mut techs = tech::TechniqueMap::new();
+    techs.insert(
+        tech::Techniques::IBL,
+        techniques::ibl::brdf_integration_map::create(),
+    );
+
+    let mut texture_desc = tex::create_color_attachment_device_texture_descriptor();
+    texture_desc.use_mipmaps = false;
+
+    let pass_desc = pass::PassDescriptor {
+        name: "BRDF Integration Map".to_string(),
+        program: shader::HostShaderProgramDescriptor {
+            name: "BRDF Integration Map".to_string(),
+            vert_shader_file_path: "shaders/pass_through.vert".to_string(),
+            frag_shader_file_path: "shaders/ibl/brdf_integration_map.frag".to_string(),
+        },
+        techniques: vec![tech::Techniques::IBL],
+
+        attachments: vec![pass::PassAttachmentDescriptor {
+            texture_desc: texture_desc,
+            flavor: pass::PassAttachmentType::Color(math::zero_vec4()),
+            source: pass::PassTextureSource::ThisPass,
+            textarget: gl::TEXTURE_2D,
+            write: true,
+            clear: true,
+            width,
+            height,
+            mip_level: 0,
+        }],
+        dependencies: Vec::new(),
+
+        width,
+        height,
+    };
+
+    let pass =
+        pass::create_render_pass(pass_desc).expect("Failed to create BRDF integration pass.");
+    let mut fullscreen_model = helper::create_full_screen_triangle_model();
+    pass::bind_techniques_to_render_pass(&mut techs, &pass);
+    pass::bind_device_model_to_render_pass(&mut fullscreen_model, &pass);
+    if let Err(msg) = pass::is_render_pass_valid(&pass, &techs, &fullscreen_model) {
+        panic!(msg);
+    }
+
+    (techs, pass, fullscreen_model)
+}
+
+fn create_prefiltered_environment_map_pass(
+    source_cube_map: Rc<tex::DeviceTexture>,
+    target_cube_map: Rc<tex::DeviceTexture>,
+    width: u32,
+    height: u32,
+) -> (tech::TechniqueMap, pass::Pass, model::DeviceModel) {
+    let mut techs = tech::TechniqueMap::new();
+    techs.insert(
+        tech::Techniques::IBL,
+        techniques::ibl::prefiltered_envirnoment_map::create(
+            math::perspective_projection_mat4x4(f32::consts::PI / 2.0, 1., 0.98, 1.01),
+            source_cube_map,
+            0_f32,
+        ),
+    );
+
+    let pass_desc = pass::PassDescriptor {
+        name: "Cubemap Convolution".to_string(),
+        program: shader::HostShaderProgramDescriptor {
+            name: "Cubemap Convolution".to_string(),
+            vert_shader_file_path: "shaders/ibl/cube_map_pass_through.vert".to_string(),
+            frag_shader_file_path: "shaders/ibl/prefiltered_environment_map.frag".to_string(),
+        },
+        techniques: vec![tech::Techniques::IBL],
+
+        attachments: create_env_map_attachment_descriptors(
+            target_cube_map.clone(),
+            gl::TEXTURE_CUBE_MAP_POSITIVE_X,
+            width,
+            height,
+            0,
+        ),
+        dependencies: Vec::new(),
+
+        width,
+        height,
+    };
+
+    let pass = pass::create_render_pass(pass_desc).expect("Failed to create HDRI render pass.");
+
+    let mut box_model = loader::load_device_model_from_obj(Path::new("data/models/box/box.obj"));
+    box_model.materials = vec![model::create_empty_device_material()];
+    pass::bind_techniques_to_render_pass(&mut techs, &pass);
+    pass::bind_device_model_to_render_pass(&mut box_model, &pass);
+    if let Err(msg) = pass::is_render_pass_valid(&pass, &techs, &box_model) {
+        panic!(msg);
+    }
+
+    (techs, pass, box_model)
+}
+
+fn create_env_map_attachment_descriptors(
+    cube_map: Rc<tex::DeviceTexture>,
+    textarget: gl::types::GLenum,
+    width: u32,
+    height: u32,
+    mip_level: i32,
+) -> Vec<pass::PassAttachmentDescriptor> {
+    vec![pass::PassAttachmentDescriptor {
+        texture_desc: tex::create_color_attachment_device_texture_descriptor(),
         flavor: pass::PassAttachmentType::Color(math::zero_vec4()),
-        source: pass::PassTextureSource::ThisPass,
+        source: pass::PassTextureSource::FreeTexture(cube_map),
+        textarget,
         write: true,
         clear: true,
         width,
         height,
+        mip_level,
+    }]
+}
+
+fn create_attachments(width: u32, height: u32) -> Vec<pass::PassAttachment> {
+    pass::create_pass_attachments(&vec![pass::PassAttachmentDescriptor {
+        texture_desc: tex::create_color_attachment_device_texture_descriptor(),
+        flavor: pass::PassAttachmentType::Color(math::zero_vec4()),
+        source: pass::PassTextureSource::ThisPass,
+        textarget: gl::TEXTURE_2D,
+        write: true,
+        clear: true,
+        width,
+        height,
+        mip_level: 0,
     }])
 }

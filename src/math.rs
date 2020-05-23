@@ -16,6 +16,12 @@ pub type Vec1u = Vec1<u32>;
 #[allow(dead_code)]
 pub type Vec1i = Vec1<i16>;
 
+impl<T> Vec1<T> {
+    pub fn new(x: T) -> Vec1<T> {
+        Vec1 { x }
+    }
+}
+
 #[derive(Copy, Clone)]
 pub struct Vec2<T> {
     pub x: T,
@@ -40,6 +46,12 @@ pub type Vec3f = Vec3<f32>;
 pub type Vec3u = Vec3<u32>;
 #[allow(dead_code)]
 pub type Vec3i = Vec3<i16>;
+
+impl<T> Vec3<T> {
+    pub fn new(x: T, y: T, z: T) -> Vec3<T> {
+        Vec3 { x, y, z }
+    }
+}
 
 #[derive(Copy, Clone)]
 pub struct Vec4<T> {
@@ -83,6 +95,15 @@ pub type Mat4x4f = Mat4x4<f32>;
 pub type Mat4x4u = Mat4x4<u32>;
 #[allow(dead_code)]
 pub type Mat4x4i = Mat4x4<i16>;
+
+impl<T> Mat4x4<T>
+where
+    T: From<i16>,
+{
+    pub fn identity() -> Mat4x4<T> {
+        identity_mat4x4::<T>()
+    }
+}
 
 impl<T> Add for Vec1<T>
 where

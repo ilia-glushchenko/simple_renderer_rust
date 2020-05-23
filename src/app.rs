@@ -24,6 +24,7 @@ pub fn initialize_application() -> Window {
 
     glfw.window_hint(glfw::WindowHint::ContextVersion(4, 6));
     glfw.window_hint(glfw::WindowHint::Resizable(true));
+    glfw.window_hint(glfw::WindowHint::OpenGlDebugContext(true));
 
     let (mut handle, events) = glfw
         .create_window(width, height, "Simple Renderer", glfw::WindowMode::Windowed)
@@ -37,6 +38,7 @@ pub fn initialize_application() -> Window {
     gl::load_with(|symbol| gl_loader::get_proc_address(symbol) as *const _);
 
     initialize_gl_debug();
+    init_gl();
 
     //Need to flip images because of the OpenGL coordinate system
     unsafe {
@@ -57,10 +59,23 @@ pub fn deinitialize_application() {
     gl_loader::end_gl();
 }
 
+fn init_gl() {
+    unsafe { gl::Enable(gl::TEXTURE_CUBE_MAP_SEAMLESS) };
+}
+
 fn initialize_gl_debug() {
     unsafe {
         gl::Enable(gl::DEBUG_OUTPUT);
+        gl::Enable(gl::DEBUG_OUTPUT_SYNCHRONOUS);
         gl::DebugMessageCallback(Some(gl_debug_callback), null());
+        gl::DebugMessageControl(
+            gl::DONT_CARE,
+            gl::DONT_CARE,
+            gl::DONT_CARE,
+            0,
+            null(),
+            gl::TRUE,
+        );
     }
 }
 
@@ -75,7 +90,7 @@ extern "system" fn gl_debug_callback(
 ) {
     let c_str: &CStr = unsafe { CStr::from_ptr(message) };
     if gltype == gl::DEBUG_TYPE_OTHER || gltype == gl::DEBUG_TYPE_MARKER {
-        log::log_info(c_str.to_str().unwrap().to_string());
+        //log::log_info(c_str.to_str().unwrap().to_string());
     } else {
         log::log_error(c_str.to_str().unwrap().to_string());
     }

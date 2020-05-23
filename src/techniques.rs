@@ -3,58 +3,26 @@ pub mod mvp {
     use crate::math;
     use crate::tech;
 
-    pub fn create(camera: &camera::Camera, transforms: &Vec<math::Mat4x4f>) -> tech::Technique {
-        tech::Technique {
-            name: "MVP".to_string(),
-            per_frame_uniforms: tech::Uniforms {
-                vec1f: Vec::new(),
-                vec1u: Vec::new(),
-                vec2f: Vec::new(),
-                vec3f: Vec::new(),
-                mat4x4f: vec![
-                    tech::Uniform::<math::Mat4x4f> {
-                        name: "uProjMat4".to_string(),
-                        data_location: tech::UniformDataLoction {
-                            locations: Vec::new(),
-                            data: vec![math::perspective_projection_mat4x4(
-                                camera.fov,
-                                camera.aspect,
-                                camera.near,
-                                camera.far,
-                            )],
-                        },
-                    },
-                    tech::Uniform::<math::Mat4x4f> {
-                        name: "uViewMat4".to_string(),
-                        data_location: tech::UniformDataLoction {
-                            locations: Vec::new(),
-                            data: vec![math::tranlation_mat4x4(math::Vec3f {
-                                x: 0.,
-                                y: 0.,
-                                z: -1.,
-                            })],
-                        },
-                    },
-                ],
-            },
-            per_model_uniforms: tech::PerModelUniforms {
-                vec1f: Vec::new(),
-                vec1u: Vec::new(),
-                vec2f: Vec::new(),
-                vec3f: Vec::new(),
-                mat4x4f: vec![tech::PerModelUnifrom::<math::Mat4x4f> {
-                    name: "uModelMat4".to_string(),
-                    data_locations: transforms
-                        .iter()
-                        .map(|&x| tech::UniformDataLoction::<math::Mat4x4f> {
-                            locations: Vec::new(),
-                            data: vec![x],
-                        })
-                        .collect(),
-                }],
-            },
-            textures: Vec::new(),
-        }
+    pub fn create(cam: &camera::Camera, transforms: &Vec<math::Mat4x4f>) -> tech::Technique {
+        let mut technique = tech::Technique::new("MVP");
+        technique.per_frame_uniforms.mat4x4f = vec![
+            tech::Uniform::<math::Mat4x4f>::new(
+                "uProjMat4",
+                vec![math::perspective_projection_mat4x4(
+                    cam.fov, cam.aspect, cam.near, cam.far,
+                )],
+            ),
+            tech::Uniform::<math::Mat4x4f>::new(
+                "uViewMat4",
+                vec![math::tranlation_mat4x4(math::Vec3f::new(0., 0., -1.))],
+            ),
+        ];
+        technique.per_model_uniforms.mat4x4f = vec![tech::PerModelUnifrom::<math::Mat4x4f>::new(
+            "uModelMat4",
+            transforms.iter().map(|&x| vec![x]).collect(),
+        )];
+
+        technique
     }
 
     pub fn update(tech: &mut tech::Technique, camera: &camera::Camera) {
@@ -88,53 +56,26 @@ pub mod lighting {
     use crate::model;
     use crate::tech;
     use crate::tex;
+    use std::rc::Rc;
 
     pub fn create(
-        specular_cubemap: &tex::DeviceTexture,
-        diffuse_cubemap: &tex::DeviceTexture,
+        diffuse_cubemap: Rc<tex::DeviceTexture>,
+        brdf_lut_texture: Rc<tex::DeviceTexture>,
+        env_map_cubemap: Rc<tex::DeviceTexture>,
         camera: &camera::Camera,
     ) -> tech::Technique {
-        tech::Technique {
-            name: "Lighting".to_string(),
-            per_frame_uniforms: tech::Uniforms {
-                vec1f: Vec::new(),
-                vec1u: Vec::new(),
-                vec2f: Vec::new(),
-                vec3f: vec![tech::Uniform::<math::Vec3f> {
-                    name: "uCameraPosVec3".to_string(),
-                    data_location: tech::UniformDataLoction {
-                        locations: Vec::new(),
-                        data: vec![camera.pos],
-                    },
-                }],
-                mat4x4f: Vec::new(),
-            },
-            per_model_uniforms: tech::PerModelUniforms {
-                vec1f: Vec::new(),
-                vec1u: Vec::new(),
-                vec2f: Vec::new(),
-                vec3f: Vec::new(),
-                mat4x4f: Vec::new(),
-            },
-            textures: vec![
-                model::TextureSampler {
-                    bindings: Vec::new(),
-                    texture: tex::DeviceTexture {
-                        name: "uSpecularSamplerCube".to_string(),
-                        handle: specular_cubemap.handle,
-                        target: specular_cubemap.target,
-                    },
-                },
-                model::TextureSampler {
-                    bindings: Vec::new(),
-                    texture: tex::DeviceTexture {
-                        name: "uDiffuseSamplerCube".to_string(),
-                        handle: diffuse_cubemap.handle,
-                        target: diffuse_cubemap.target,
-                    },
-                },
-            ],
-        }
+        let mut technique = tech::Technique::new("Lighting");
+        technique.per_frame_uniforms.vec3f = vec![tech::Uniform::<math::Vec3f>::new(
+            "uCameraPosVec3",
+            vec![camera.pos],
+        )];
+        technique.textures = vec![
+            model::TextureSampler::new("uDiffuseSamplerCube", diffuse_cubemap),
+            model::TextureSampler::new("uBrdfLUTSampler2D", brdf_lut_texture),
+            model::TextureSampler::new("uEnvMapSamplerCube", env_map_cubemap),
+        ];
+
+        technique
     }
 
     pub fn update(tech: &mut tech::Technique, camera: &camera::Camera) {
@@ -155,69 +96,38 @@ pub mod skybox {
     use crate::camera;
     use crate::math;
     use crate::model;
-    use crate::tech;
+    use crate::tech::{Technique, Uniform};
     use crate::tex;
+    use std::rc::Rc;
 
     pub fn create(
-        skybox: tex::DeviceTexture,
+        skybox: Rc<tex::DeviceTexture>,
         camera: &camera::Camera,
         skybox_model: math::Mat4x4f,
-    ) -> tech::Technique {
-        tech::Technique {
-            name: "Skybox".to_string(),
-            per_frame_uniforms: tech::Uniforms {
-                vec1f: Vec::new(),
-                vec1u: Vec::new(),
-                vec2f: Vec::new(),
-                vec3f: Vec::new(),
-                mat4x4f: vec![
-                    tech::Uniform::<math::Mat4x4f> {
-                        name: "uProjMat4".to_string(),
-                        data_location: tech::UniformDataLoction {
-                            locations: Vec::new(),
-                            data: vec![math::perspective_projection_mat4x4(
-                                camera.fov,
-                                camera.aspect,
-                                camera.near,
-                                camera.far,
-                            )],
-                        },
-                    },
-                    tech::Uniform::<math::Mat4x4f> {
-                        name: "uViewMat4".to_string(),
-                        data_location: tech::UniformDataLoction {
-                            locations: Vec::new(),
-                            data: vec![math::tranlation_mat4x4(math::Vec3f {
-                                x: 0.,
-                                y: 0.,
-                                z: -1.,
-                            })],
-                        },
-                    },
-                    tech::Uniform::<math::Mat4x4f> {
-                        name: "uModelMat4".to_string(),
-                        data_location: tech::UniformDataLoction {
-                            locations: Vec::new(),
-                            data: vec![skybox_model],
-                        },
-                    },
-                ],
-            },
-            per_model_uniforms: tech::PerModelUniforms {
-                vec1f: Vec::new(),
-                vec1u: Vec::new(),
-                vec2f: Vec::new(),
-                vec3f: Vec::new(),
-                mat4x4f: Vec::new(),
-            },
-            textures: vec![model::TextureSampler {
-                bindings: Vec::new(),
-                texture: skybox,
-            }],
-        }
+    ) -> Technique {
+        let mut technique = Technique::new("Skybox");
+        technique.per_frame_uniforms.mat4x4f = vec![
+            Uniform::<math::Mat4x4f>::new(
+                "uProjMat4",
+                vec![math::perspective_projection_mat4x4(
+                    camera.fov,
+                    camera.aspect,
+                    camera.near,
+                    camera.far,
+                )],
+            ),
+            Uniform::<math::Mat4x4f>::new(
+                "uViewMat4",
+                vec![math::tranlation_mat4x4(math::Vec3f::new(0., 0., -1.))],
+            ),
+            Uniform::<math::Mat4x4f>::new("uModelMat4", vec![skybox_model]),
+        ];
+        technique.textures = vec![model::TextureSampler::new("uSkyboxSamplerCube", skybox)];
+
+        technique
     }
 
-    pub fn update(tech: &mut tech::Technique, camera: &camera::Camera) {
+    pub fn update(tech: &mut Technique, camera: &camera::Camera) {
         let view_mat_index = tech
             .per_frame_uniforms
             .mat4x4f
@@ -246,24 +156,7 @@ pub mod tone_mapping {
     use crate::tech;
 
     pub fn create() -> tech::Technique {
-        tech::Technique {
-            name: "HDRI 2 Cube".to_string(),
-            per_frame_uniforms: tech::Uniforms {
-                vec1f: Vec::new(),
-                vec1u: Vec::new(),
-                vec2f: Vec::new(),
-                vec3f: Vec::new(),
-                mat4x4f: Vec::new(),
-            },
-            per_model_uniforms: tech::PerModelUniforms {
-                vec1f: Vec::new(),
-                vec1u: Vec::new(),
-                vec2f: Vec::new(),
-                vec3f: Vec::new(),
-                mat4x4f: Vec::new(),
-            },
-            textures: Vec::new(),
-        }
+        tech::Technique::new("Tone Mapping")
     }
 }
 
@@ -272,97 +165,104 @@ pub mod ibl {
     use crate::tech;
 
     pub mod hdri2cube {
-        use crate::math;
+        use crate::math::Mat4x4f;
         use crate::model;
-        use crate::tech;
+        use crate::tech::{Technique, Uniform};
         use crate::tex;
+        use std::rc::Rc;
 
-        pub fn create(proj: math::Mat4x4f, hdri_texture: tex::DeviceTexture) -> tech::Technique {
-            tech::Technique {
-                name: "HDRI 2 Cube".to_string(),
-                per_frame_uniforms: tech::Uniforms {
-                    vec1f: Vec::new(),
-                    vec1u: Vec::new(),
-                    vec2f: Vec::new(),
-                    vec3f: Vec::new(),
-                    mat4x4f: vec![
-                        tech::Uniform::<math::Mat4x4f> {
-                            name: "uProjMat4".to_string(),
-                            data_location: tech::UniformDataLoction {
-                                locations: Vec::new(),
-                                data: vec![proj],
-                            },
-                        },
-                        tech::Uniform::<math::Mat4x4f> {
-                            name: "uViewMat4".to_string(),
-                            data_location: tech::UniformDataLoction {
-                                locations: Vec::new(),
-                                data: vec![math::identity_mat4x4()],
-                            },
-                        },
-                    ],
-                },
-                per_model_uniforms: tech::PerModelUniforms {
-                    vec1f: Vec::new(),
-                    vec1u: Vec::new(),
-                    vec2f: Vec::new(),
-                    vec3f: Vec::new(),
-                    mat4x4f: Vec::new(),
-                },
-                textures: vec![model::TextureSampler {
-                    bindings: Vec::new(),
-                    texture: hdri_texture,
-                }],
-            }
+        pub fn create(proj: Mat4x4f, hdri_texture: Rc<tex::DeviceTexture>) -> Technique {
+            let mut technique = Technique::new("HDRI 2 Cube");
+            technique.per_frame_uniforms.mat4x4f = vec![
+                Uniform::<Mat4x4f>::new("uProjMat4", vec![proj]),
+                Uniform::<Mat4x4f>::new("uViewMat4", vec![Mat4x4f::identity()]),
+            ];
+            technique.textures = vec![model::TextureSampler::new("uHdriSampler2D", hdri_texture)];
+
+            technique
         }
     }
 
-    pub mod cubemap_convolution {
-        use crate::math;
+    pub mod diffuse_cubemap_convolution {
+        use crate::math::Mat4x4f;
         use crate::model;
-        use crate::tech;
+        use crate::tech::{Technique, Uniform};
         use crate::tex;
+        use std::rc::Rc;
+
+        pub fn create(proj: Mat4x4f, specular_cubemap: Rc<tex::DeviceTexture>) -> Technique {
+            let mut technique = Technique::new("Diffuse Cubemap Convolution");
+            technique.per_frame_uniforms.mat4x4f = vec![
+                Uniform::<Mat4x4f>::new("uProjMat4", vec![proj]),
+                Uniform::<Mat4x4f>::new("uViewMat4", vec![Mat4x4f::identity()]),
+            ];
+            technique.textures = vec![model::TextureSampler::new(
+                "uSkyboxSamplerCube",
+                specular_cubemap,
+            )];
+
+            technique
+        }
+    }
+
+    pub mod brdf_integration_map {
+        use crate::tech;
+
+        pub fn create() -> tech::Technique {
+            tech::Technique::new("BRDF Integration Map")
+        }
+    }
+
+    pub mod prefiltered_envirnoment_map {
+        use crate::math::{Mat4x4f, Vec1f};
+        use crate::model;
+        use crate::tech::{Technique, Uniform};
+        use crate::tex;
+        use std::rc::Rc;
 
         pub fn create(
-            proj: math::Mat4x4f,
-            specular_cubemap: tex::DeviceTexture,
-        ) -> tech::Technique {
-            tech::Technique {
-                name: "Cubemap Convolution".to_string(),
-                per_frame_uniforms: tech::Uniforms {
-                    vec1f: Vec::new(),
-                    vec1u: Vec::new(),
-                    vec2f: Vec::new(),
-                    vec3f: Vec::new(),
-                    mat4x4f: vec![
-                        tech::Uniform::<math::Mat4x4f> {
-                            name: "uProjMat4".to_string(),
-                            data_location: tech::UniformDataLoction {
-                                locations: Vec::new(),
-                                data: vec![proj],
-                            },
-                        },
-                        tech::Uniform::<math::Mat4x4f> {
-                            name: "uViewMat4".to_string(),
-                            data_location: tech::UniformDataLoction {
-                                locations: Vec::new(),
-                                data: vec![math::identity_mat4x4()],
-                            },
-                        },
-                    ],
-                },
-                per_model_uniforms: tech::PerModelUniforms {
-                    vec1f: Vec::new(),
-                    vec1u: Vec::new(),
-                    vec2f: Vec::new(),
-                    vec3f: Vec::new(),
-                    mat4x4f: Vec::new(),
-                },
-                textures: vec![model::TextureSampler {
-                    bindings: Vec::new(),
-                    texture: specular_cubemap,
-                }],
-            }
+            proj: Mat4x4f,
+            specular_cubemap: Rc<tex::DeviceTexture>,
+            roughness: f32,
+        ) -> Technique {
+            let mut technique = Technique::new("Prefiltered Environment Map");
+            technique.per_frame_uniforms.vec1f = vec![Uniform::<Vec1f>::new(
+                "uScalarRoughnessVec1f",
+                vec![Vec1f::new(roughness)],
+            )];
+            technique.per_frame_uniforms.mat4x4f = vec![
+                Uniform::<Mat4x4f>::new("uProjMat4", vec![proj]),
+                Uniform::<Mat4x4f>::new("uViewMat4", vec![Mat4x4f::identity()]),
+            ];
+            technique.textures = vec![model::TextureSampler::new(
+                "uSkyboxSamplerCube",
+                specular_cubemap,
+            )];
+
+            technique
+        }
+
+        pub fn update(tech: &mut Technique, view: Mat4x4f, roughness: f32) {
+            let view_mat_index = tech
+                .per_frame_uniforms
+                .mat4x4f
+                .iter()
+                .position(|x| x.name == "uViewMat4")
+                .expect("IBL technique must have uViewMat4");
+
+            tech.per_frame_uniforms.mat4x4f[view_mat_index]
+                .data_location
+                .data[0] = view;
+
+            let roughness_vec_index = tech
+                .per_frame_uniforms
+                .vec1f
+                .iter()
+                .position(|x| x.name == "uScalarRoughnessVec1f")
+                .expect("IBL technique must have uScalarRoughnessVec1f");
+            tech.per_frame_uniforms.vec1f[roughness_vec_index]
+                .data_location
+                .data[0] = Vec1f::new(roughness);
         }
     }
 

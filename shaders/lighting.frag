@@ -89,6 +89,11 @@ vec3 FresnelSchlick(float cosTheta, vec3 F0)
     return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
 }
 
+vec3 FresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
+{
+    return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(1.0 - cosTheta, 5.0);
+}
+
 float DistributionGGX(vec3 N, vec3 H, float roughness)
 {
     float a      = roughness*roughness;
@@ -215,7 +220,11 @@ void main()
         300., 300., 300., 300.
     };
 
-    vec3 albedo = vec3(uScalarAlbedoVec3f.r, 0, 0);
+    // vec3 albedo = texture(uAlbedoMapSampler2D, uv).rgb;
+    // float metalness = texture(uMetallicSampler2D, uv).r;
+    // float roughness = clamp(texture(uRoughnessSampler2D, uv).r, 0.04f, 1.f);
+
+    vec3 albedo = uScalarAlbedoVec3f;
     //This clamp is to avoid no specular highlights for omni lights
     float roughness = clamp(uScalarRoughnessVec1f, 0.04f, 1.f);
     float metalness = uScalarMetalnessVec1f;
@@ -234,11 +243,10 @@ void main()
         vec3 h = normalize(l + v);
 
         vec3 kS = FresnelSchlick(max(dot(h, v), 0.0), F0); 
-        vec3 kD = 1.0 - kS;
-        kD *= 1.0 - metalness;
+        vec3 kD = (1.0 - kS) * (1.0 - metalness);
 
         vec3 radiance = light_colors[i] * ClampPunctualLightRadiance(
-                length(point_lights[i] - positionWorld), light_radiances[i]);
+            length(point_lights[i] - positionWorld), light_radiances[i]);
         
         Lo += (
             kD * HammonDiffuse(n, l, v, h, roughness, F0, albedo)
@@ -246,5 +254,14 @@ void main()
         ) * radiance * max(0, dot(n, l));
     }
 
-    outColor = vec4(Lo, 1);
+    vec3 kS = FresnelSchlickRoughness(max(dot(n, v), 0.0), F0, roughness); 
+    vec3 kD = 1.0 - kS;
+    kD *= 1.0 - metalness;	  
+    vec3 irradiance = texture(uDiffuseSamplerCube, -n).rgb;
+    vec3 diffuse = irradiance * albedo;
+    vec3 ambient = (kD * diffuse);
+
+    vec3 color = ambient + Lo;
+
+    outColor = vec4(color, 1);
 }

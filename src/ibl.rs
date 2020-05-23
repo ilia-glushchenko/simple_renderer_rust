@@ -29,8 +29,8 @@ pub fn create_specular_cube_map_texture(host_texture: &tex::HostTexture) -> tex:
 }
 
 pub fn create_diffuse_cube_map_texture(cube_map: &tex::DeviceTexture) -> tex::DeviceTexture {
-    let width: u32 = 2048;
-    let height: u32 = 2048;
+    let width: u32 = 32;
+    let height: u32 = 32;
 
     let (mut techs, mut pass, box_model) = create_cubemap_convolution_pass(cube_map, width, height);
 
@@ -252,8 +252,8 @@ fn create_hdri_2_cube_map_pass(
         name: "HDRI 2 Cube".to_string(),
         program: shader::HostShaderProgramDescriptor {
             name: "HDIR 2 Cube".to_string(),
-            vert_shader_file_path: "shaders/hdri2cube.vert".to_string(),
-            frag_shader_file_path: "shaders/hdri2cube.frag".to_string(),
+            vert_shader_file_path: "shaders/ibl/hdri2cube.vert".to_string(),
+            frag_shader_file_path: "shaders/ibl/hdri2cube.frag".to_string(),
         },
         techniques: vec![tech::Techniques::IBL],
 
@@ -307,8 +307,8 @@ fn create_cubemap_convolution_pass(
         name: "Cubemap Convolution".to_string(),
         program: shader::HostShaderProgramDescriptor {
             name: "Cubemap Convolution".to_string(),
-            vert_shader_file_path: "shaders/cube_map_convolution.vert".to_string(),
-            frag_shader_file_path: "shaders/cube_map_convolution.frag".to_string(),
+            vert_shader_file_path: "shaders/ibl/diffuse_cube_map_convolution.vert".to_string(),
+            frag_shader_file_path: "shaders/ibl/diffuse_cube_map_convolution.frag".to_string(),
         },
         techniques: vec![tech::Techniques::IBL],
 

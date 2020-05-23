@@ -20,6 +20,17 @@ mod techniques;
 mod tex;
 
 #[allow(dead_code)]
+fn create_empty_model() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
+    return (
+        model::DeviceModel {
+            meshes: Vec::new(),
+            materials: Vec::new(),
+        },
+        Vec::new(),
+    );
+}
+
+#[allow(dead_code)]
 fn load_pbr_sphere() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
     let mut device_model =
         loader::load_device_model_from_obj(Path::new("data/models/pbr-sphere/sphere.obj"));

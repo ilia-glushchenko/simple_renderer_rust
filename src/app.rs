@@ -75,7 +75,7 @@ extern "system" fn gl_debug_callback(
 ) {
     let c_str: &CStr = unsafe { CStr::from_ptr(message) };
     if gltype == gl::DEBUG_TYPE_OTHER || gltype == gl::DEBUG_TYPE_MARKER {
-        //log::log_info(c_str.to_str().unwrap().to_string());
+        log::log_info(c_str.to_str().unwrap().to_string());
     } else {
         log::log_error(c_str.to_str().unwrap().to_string());
     }

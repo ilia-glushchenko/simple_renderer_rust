@@ -17,16 +17,10 @@ layout (binding = 5, location = 35) uniform samplerCube uDiffuseSamplerCube;
 layout (binding = 6, location = 36) uniform sampler2D uBrdfLUTSampler2D;
 layout (binding = 7, location = 37) uniform samplerCube uEnvMapSamplerCube;
 
-layout (location = 0) in vec3 normalModel;
-layout (location = 1) in vec3 tangentModel;
-layout (location = 2) in vec3 bitangentModel;
-layout (location = 3) in vec2 uv;
-layout (location = 4) in vec3 normalWorld;
-layout (location = 5) in vec3 tangentWorld;
-layout (location = 6) in vec3 bitangentWorld;
-layout (location = 7) in vec3 positionWorld;
-layout (location = 8) in vec3 cameraPositionWorld;
-layout (location = 9) in vec3 posView;
+layout (location = 0) in vec2 uv;
+layout (location = 1) in vec3 normalWorld;
+layout (location = 2) in vec3 positionWorld;
+layout (location = 3) in vec3 cameraPositionWorld;
 
 layout (location = 0) out vec4 outColor;
 
@@ -35,7 +29,7 @@ layout (location = 0) out vec4 outColor;
 
 float ClampPunctualLightRadiance(float r, float radiance)
 {
-    float r0 = 1;
+    float r0 = 2;
     float r_min = 1;
     float r_max = 100;
 
@@ -203,51 +197,72 @@ vec3 ForstbiteCookTorrance(vec3 n, vec3 l, vec3 v, vec3 h, float alpha, vec3 F0)
     return Fr;
 }
 
+mat3 CalculateTBNMatrix( vec3 N, vec3 p, vec2 pUV )
+{
+    // get edge vectors of the pixel triangle
+    vec3 dp1 = dFdx( p );
+    vec3 dp2 = dFdy( p );
+    vec2 duv1 = dFdx( pUV );
+    vec2 duv2 = dFdy( pUV );
+
+    // solve the linear system
+    vec3 dp2perp = cross( dp2, N );
+    vec3 dp1perp = cross( N, dp1 );
+    vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+    vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+
+    // construct a scale-invariant frame
+    float invmax = inversesqrt( max( dot(T,T), dot(B,B) ) );
+    return mat3( T * invmax, B * invmax, N );
+}
+
 void main()
 {
-    vec3 point_lights[] = {
-        vec3(-10.0f,  10.0f, 10.0f),
-        vec3( 10.0f,  10.0f, 10.0f),
-        vec3(-10.0f, -10.0f, 10.0f),
-        vec3( 10.0f, -10.0f, 10.0f),
+    mat3 TBN = CalculateTBNMatrix(normalWorld, positionWorld, uv);
+
+    vec3 pointLightsTBN[] = {
+        TBN * vec3(-50.0f,  50.0f, 50.0f),
+        TBN * vec3( 50.0f,  50.0f, 50.0f),
+        TBN * vec3(-50.0f, -50.0f, 50.0f),
+        TBN * vec3( 50.0f, -50.0f, 50.0f),
+        TBN * vec3(  0.0f,   0.0f, 50.0f),
     };
-    vec3 light_colors[] = {
+    vec3 pointLightColors[] = {
+        vec3(1.f, 1.f, 1.f),
         vec3(1.f, 1.f, 1.f),
         vec3(1.f, 1.f, 1.f),
         vec3(1.f, 1.f, 1.f),
         vec3(1.f, 1.f, 1.f)
     };
-    float light_radiances[] = {
-        300., 300., 300., 300.
+    float pointLightRadiance[] = {
+        1000., 1000., 1000., 1000., 1000.
     };
+    vec3 positionTBN = TBN * positionWorld;
+    vec3 cameraPositionTBN = TBN * cameraPositionWorld;
 
-    // vec3 albedo = texture(uAlbedoMapSampler2D, uv).rgb;
-    // float metalness = texture(uMetallicSampler2D, uv).r;
-    // float roughness = clamp(texture(uRoughnessSampler2D, uv).r, 0.04f, 1.f);
+    vec3 albedo = texture(uAlbedoMapSampler2D, uv).rgb;
+    float metalness = 0; //texture(uMetallicSampler2D, uv).r;
+    float roughness = clamp(texture(uRoughnessSampler2D, uv).r, 0.04f, 1.f);
 
-    vec3 albedo = uScalarAlbedoVec3f;
-    //This clamp is to avoid no specular highlights for omni lights
-    float roughness = clamp(uScalarRoughnessVec1f, 0.04f, 1.f);
-    float metalness = uScalarMetalnessVec1f;
-
-    vec3 n = normalize(normalWorld);
-    vec3 v = normalize(cameraPositionWorld - positionWorld);
-    vec3 r = normalize(reflect(v, n));
+    vec3 n = normalize(texture(uNormalMapSampler2D, uv).rgb);
+    n = normalize(n * 2.0 - 1.0);
+    // vec3 n = TBN * normalWorld;
+    vec3 v = normalize(cameraPositionTBN - positionTBN);
 
     vec3 F0 = vec3(0.04);
     F0 = mix(F0, albedo, metalness);
 
     vec3 Lo = vec3(0);
-    for (int i = 0; i < 4 ; ++i)
+    for (int i = 0; i < 5 ; ++i)
     {
-        vec3 l = normalize(point_lights[i] - positionWorld);
+        vec3 l = normalize(pointLightsTBN[i] - positionTBN);
         vec3 h = normalize(l + v);
 
         vec3 kS = FresnelSchlick(max(dot(h, v), 0.0), F0);
         vec3 kD = (1.0 - kS) * (1.0 - metalness);
 
-        vec3 radiance = light_colors[i] * ClampPunctualLightRadiance(
-            length(point_lights[i] - positionWorld), light_radiances[i]);
+        vec3 radiance = pointLightColors[i] * ClampPunctualLightRadiance(
+            length(pointLightsTBN[i] - positionTBN), pointLightRadiance[i]);
 
         Lo += (
             kD * HammonDiffuse(n, l, v, h, roughness, F0, albedo)
@@ -262,7 +277,8 @@ void main()
     vec3 diffuse = irradiance * albedo;
 
     const float MAX_REFLECTION_LOD = 7.0;
-    vec3 prefilteredColor = textureLod(uEnvMapSamplerCube, r, roughness * MAX_REFLECTION_LOD).rgb;
+    vec3 worldR = normalize(reflect(cameraPositionWorld - positionWorld, normalWorld));
+    vec3 prefilteredColor = textureLod(uEnvMapSamplerCube, worldR, roughness * MAX_REFLECTION_LOD).rgb;
     vec3 F        = FresnelSchlickRoughness(max(dot(n, v), 0.0), F0, roughness);
     vec2 envBRDF  = texture(uBrdfLUTSampler2D, vec2(max(dot(n, v), 0.0), roughness)).rg;
     vec3 specular = prefilteredColor * (F * envBRDF.x + envBRDF.y);

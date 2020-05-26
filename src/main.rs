@@ -32,6 +32,17 @@ fn create_empty_model() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
 }
 
 #[allow(dead_code)]
+fn load_wall() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
+    let device_model = loader::load_device_model_from_obj(Path::new("data/models/quad/quad.obj"));
+    let trasforms = vec![
+        math::tranlation_mat4x4(math::Vec3f::new(0., 0., 0.))
+            * math::scale_mat4x4(math::Vec3f::new(100., 100., 100.)),
+    ];
+
+    (device_model, trasforms)
+}
+
+#[allow(dead_code)]
 fn load_pbr_sphere() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
     let mut device_model =
         loader::load_device_model_from_obj(Path::new("data/models/pbr-sphere/sphere.obj"));
@@ -90,7 +101,7 @@ fn load_skybox() -> (
 ) {
     let mut device_model = loader::load_device_model_from_obj(Path::new("data/models/box/box.obj"));
     device_model.materials = vec![model::create_empty_device_material()];
-    let transform = math::scale_mat4x4(math::Vec3f::new(100., 100., 100.));
+    let transform = math::scale_mat4x4(math::Vec3f::new(500., 500., 500.));
 
     let hdr_skybox_texture = ibl::create_specular_cube_map_texture(
         &loader::load_host_texture_from_file(
@@ -135,7 +146,9 @@ fn main_loop(window: &mut app::Window) {
     let brdf_lut = ibl::create_brdf_lut();
     let (mut skybox_model, specular_skybox, diffuse_skybox, env_map, skybox_transform) =
         load_skybox();
-    let (mut device_model_full, transforms) = load_pbr_sphere();
+    // let (mut device_model_full, transforms) = load_pbr_sphere();
+    // let (mut device_model_full, transforms) = load_sponza();
+    let (mut device_model_full, transforms) = load_wall();
     let mut device_model_short = model::DeviceModel {
         meshes: device_model_full.meshes.clone(),
         materials: device_model_full

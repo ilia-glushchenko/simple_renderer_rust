@@ -33,7 +33,17 @@ fn create_empty_model() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
 
 #[allow(dead_code)]
 fn load_wall() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
-    let device_model = loader::load_device_model_from_obj(Path::new("data/models/quad/quad.obj"));
+    let mut device_model =
+        loader::load_device_model_from_obj(Path::new("data/models/quad/quad.obj"));
+    device_model.materials[0]
+        .set_svec1f("uScalarRoughnessVec1f", math::Vec1f::new(0.))
+        .unwrap();
+    device_model.materials[0]
+        .set_svec1f("uScalarMetalnessVec1f", math::Vec1f::new(0.))
+        .unwrap();
+    device_model.materials[0]
+        .set_svec3f("uScalarAlbedoVec3f", math::Vec3f::new(0., 0., 0.))
+        .unwrap();
     let trasforms = vec![
         math::tranlation_mat4x4(math::Vec3f::new(0., 0., 0.))
             * math::scale_mat4x4(math::Vec3f::new(100., 100., 100.)),
@@ -49,6 +59,9 @@ fn load_pbr_sphere() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
 
     let mesh = device_model.meshes[0].clone();
     let mut material = device_model.materials[0].clone();
+    material
+        .set_svec3f("uScalarAlbedoVec3f", math::Vec3f::new(1., 1., 1.))
+        .unwrap();
     material.properties_3f[0].value.data_location.data[0] = math::Vec3f::new(1., 1., 1.);
     let mut transforms = Vec::new();
 
@@ -60,8 +73,13 @@ fn load_pbr_sphere() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
             let mut material = material.clone();
             let roughness = (x + 10) as f32 / 20.;
             let metalness = (y + 10) as f32 / 20.;
-            material.properties_1f[0].value.data_location.data[0] = math::Vec1f { x: roughness };
-            material.properties_1f[1].value.data_location.data[0] = math::Vec1f { x: metalness };
+
+            material
+                .set_svec1f("uScalarRoughnessVec1f", math::Vec1f::new(roughness))
+                .unwrap();
+            material
+                .set_svec1f("uScalarMetalnessVec1f", math::Vec1f::new(metalness))
+                .unwrap();
             device_model.materials.push(material);
 
             let mut mesh = mesh.clone();
@@ -99,24 +117,27 @@ fn load_skybox() -> (
     Rc<tex::DeviceTexture>,
     math::Mat4x4f,
 ) {
-    let mut device_model = loader::load_device_model_from_obj(Path::new("data/models/box/box.obj"));
-    device_model.materials = vec![model::create_empty_device_material()];
+    let mut box_model = loader::load_device_model_from_obj(Path::new("data/models/box/box.obj"));
+    box_model.materials = vec![model::DeviceMaterial::empty()];
     let transform = math::scale_mat4x4(math::Vec3f::new(500., 500., 500.));
 
     let hdr_skybox_texture = ibl::create_specular_cube_map_texture(
         &loader::load_host_texture_from_file(
             &Path::new("data/materials/hdri/quattro_canti/quattro_canti_8k.hdr"),
-            "uHdriSampler2D".to_string(),
+            "uHdriSampler2D",
         )
         .unwrap(),
+        &mut box_model,
     );
 
-    let hdr_diffuse_skybox = ibl::create_diffuse_cube_map_texture(hdr_skybox_texture.clone());
+    let hdr_diffuse_skybox =
+        ibl::create_diffuse_cube_map_texture(hdr_skybox_texture.clone(), &mut box_model);
 
-    let prefiltered_env_map = ibl::create_prefiltered_environment_map(hdr_skybox_texture.clone());
+    let prefiltered_env_map =
+        ibl::create_prefiltered_environment_map(hdr_skybox_texture.clone(), &mut box_model);
 
     (
-        device_model,
+        box_model,
         hdr_skybox_texture,
         hdr_diffuse_skybox,
         prefiltered_env_map,
@@ -144,8 +165,7 @@ fn main_loop(window: &mut app::Window) {
 
     let mut fullscreen_model = helper::create_full_screen_triangle_model();
     let brdf_lut = ibl::create_brdf_lut();
-    let (mut skybox_model, specular_skybox, diffuse_skybox, env_map, skybox_transform) =
-        load_skybox();
+    let (mut box_model, specular_skybox, diffuse_skybox, env_map, skybox_transform) = load_skybox();
     // let (mut device_model_full, transforms) = load_pbr_sphere();
     // let (mut device_model_full, transforms) = load_sponza();
     let (mut device_model_full, transforms) = load_wall();
@@ -154,7 +174,7 @@ fn main_loop(window: &mut app::Window) {
         materials: device_model_full
             .materials
             .iter()
-            .map(|_| model::create_empty_device_material())
+            .map(|_| model::DeviceMaterial::empty())
             .collect(),
     };
     let mut camera = camera::create_default_camera(window.width, window.height);
@@ -196,7 +216,7 @@ fn main_loop(window: &mut app::Window) {
         Ok(ref mut pipeline) => {
             pass::bind_device_model_to_render_pass(&mut device_model_short, &pipeline[0]);
             pass::bind_device_model_to_render_pass(&mut device_model_full, &pipeline[1]);
-            pass::bind_device_model_to_render_pass(&mut skybox_model, &pipeline[2]);
+            pass::bind_device_model_to_render_pass(&mut box_model, &pipeline[2]);
             pass::bind_device_model_to_render_pass(&mut fullscreen_model, &pipeline[3]);
             if let Err(msg) =
                 pipeline::is_render_pipeline_valid(pipeline, &techniques, &device_model_full)
@@ -250,7 +270,7 @@ fn main_loop(window: &mut app::Window) {
                         pipeline[1].program.handle,
                     );
                     pass::unbind_device_model_from_render_pass(
-                        &mut skybox_model,
+                        &mut box_model,
                         pipeline[2].program.handle,
                     );
                     pass::unbind_device_model_from_render_pass(
@@ -264,7 +284,7 @@ fn main_loop(window: &mut app::Window) {
 
                     pass::bind_device_model_to_render_pass(&mut device_model_short, &pipeline[0]);
                     pass::bind_device_model_to_render_pass(&mut device_model_full, &pipeline[1]);
-                    pass::bind_device_model_to_render_pass(&mut skybox_model, &pipeline[2]);
+                    pass::bind_device_model_to_render_pass(&mut box_model, &pipeline[2]);
                     pass::bind_device_model_to_render_pass(&mut fullscreen_model, &pipeline[3]);
 
                     if let Err(msg) = pipeline::is_render_pipeline_valid(
@@ -289,7 +309,7 @@ fn main_loop(window: &mut app::Window) {
 
             pass::execute_render_pass(&pipeline[0], &techniques, &device_model_full);
             pass::execute_render_pass(&pipeline[1], &techniques, &device_model_full);
-            pass::execute_render_pass(&pipeline[2], &techniques, &skybox_model);
+            pass::execute_render_pass(&pipeline[2], &techniques, &box_model);
             pass::execute_render_pass(&pipeline[3], &techniques, &fullscreen_model);
 
             pass::blit_framebuffer_to_backbuffer(&pipeline.last().unwrap(), window);
@@ -307,7 +327,7 @@ fn main_loop(window: &mut app::Window) {
             &mut device_model_full,
             pipeline[1].program.handle,
         );
-        pass::unbind_device_model_from_render_pass(&mut skybox_model, pipeline[2].program.handle);
+        pass::unbind_device_model_from_render_pass(&mut box_model, pipeline[2].program.handle);
         pass::unbind_device_model_from_render_pass(
             &mut fullscreen_model,
             pipeline[3].program.handle,
@@ -317,7 +337,7 @@ fn main_loop(window: &mut app::Window) {
 
     tech::delete_techniques(techniques);
     model::delete_device_model(device_model_full);
-    model::delete_device_model(skybox_model);
+    model::delete_device_model(box_model);
     model::delete_device_model(fullscreen_model);
 }
 

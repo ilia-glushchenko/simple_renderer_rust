@@ -182,6 +182,6 @@ pub fn create_full_screen_triangle_host_mesh() -> model::HostMesh {
 pub fn create_full_screen_triangle_model() -> model::DeviceModel {
     model::create_device_model(&model::HostModel {
         meshes: vec![create_full_screen_triangle_host_mesh()],
-        materials: vec![model::create_empty_host_material()],
+        materials: vec![model::HostMaterial::empty()],
     })
 }

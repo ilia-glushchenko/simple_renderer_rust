@@ -1,29 +1,60 @@
 #version 460
 
+///////////////////////////////////////////////////////////
+// MVP
+///////////////////////////////////////////////////////////
 layout (location = 10) uniform mat4 uModelMat4;
 layout (location = 11) uniform mat4 uViewMat4;
 layout (location = 12) uniform mat4 uProjMat4;
 layout (location = 13) uniform vec3 uCameraPosVec3;
+
+///////////////////////////////////////////////////////////
+// Material
+///////////////////////////////////////////////////////////
 layout (location = 14) uniform vec3 uScalarAlbedoVec3f;
 layout (location = 15) uniform float uScalarRoughnessVec1f;
 layout (location = 16) uniform float uScalarMetalnessVec1f;
+
+layout (location = 17) uniform uint uAlbedoMapAvailableUint;
+layout (location = 18) uniform uint uNormalMapAvailableUint;
+layout (location = 19) uniform uint uBumpMapAvailableUint;
+layout (location = 20) uniform uint uMetallicAvailableUint;
+layout (location = 21) uniform uint uRoughnessAvailableUint;
 
 layout (binding = 0, location = 30) uniform sampler2D uAlbedoMapSampler2D;
 layout (binding = 1, location = 31) uniform sampler2D uNormalMapSampler2D;
 layout (binding = 2, location = 32) uniform sampler2D uBumpMapSampler2D;
 layout (binding = 3, location = 33) uniform sampler2D uMetallicSampler2D;
 layout (binding = 4, location = 34) uniform sampler2D uRoughnessSampler2D;
-layout (binding = 5, location = 35) uniform samplerCube uDiffuseSamplerCube;
-layout (binding = 6, location = 36) uniform sampler2D uBrdfLUTSampler2D;
-layout (binding = 7, location = 37) uniform samplerCube uEnvMapSamplerCube;
 
-layout (location = 0) in vec2 uv;
+///////////////////////////////////////////////////////////
+// IBL
+///////////////////////////////////////////////////////////
+layout (binding = 5, location = 35) uniform samplerCube uDiffuseSamplerCube;
+layout (binding = 6, location = 36) uniform samplerCube uEnvMapSamplerCube;
+layout (binding = 7, location = 37) uniform sampler2D uBrdfLUTSampler2D;
+
+///////////////////////////////////////////////////////////
+// Parallax Occlusion Mapping
+///////////////////////////////////////////////////////////
+layout (binding = 8, location = 38) uniform sampler2D uDepthMapSampler2D;
+
+///////////////////////////////////////////////////////////
+// Input
+///////////////////////////////////////////////////////////
+layout (location = 0) in vec2 inUV;
 layout (location = 1) in vec3 normalWorld;
 layout (location = 2) in vec3 positionWorld;
 layout (location = 3) in vec3 cameraPositionWorld;
 
+///////////////////////////////////////////////////////////
+// Output
+///////////////////////////////////////////////////////////
 layout (location = 0) out vec4 outColor;
 
+///////////////////////////////////////////////////////////
+// Constants
+///////////////////////////////////////////////////////////
 #define M_PI 3.1415926535897932384626433832795
 #define EPSILON 1e-5
 
@@ -39,10 +70,111 @@ float ClampPunctualLightRadiance(float r, float radiance)
     return attenuated_radiance;
 }
 
-//See Real-Time Rendering (page 351)
+mat3 CalculateTBNMatrix( vec3 N, vec3 p, vec2 pUV )
+{
+    // get edge vectors of the pixel triangle
+    vec3 dp1 = dFdx( p );
+    vec3 dp2 = dFdy( p );
+    vec2 duv1 = dFdx( pUV );
+    vec2 duv2 = dFdy( pUV );
+
+    // solve the linear system
+    vec3 dp2perp = cross( dp2, N );
+    vec3 dp1perp = cross( N, dp1 );
+    vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+    vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+
+    // construct a scale-invariant frame
+    float invmax = inversesqrt( max( dot(T,T), dot(B,B) ) );
+    return mat3( T * invmax, B * invmax, N );
+}
+
+struct POMResult {
+    vec2 uv;
+    float depth;
+};
+
+POMResult ParallaxOcclusionMapping(vec2 uv, vec3 v)
+{
+    const float height_scale = 0.1;
+    const float minLayers = 8.0;
+    const float maxLayers = 32.0;
+    const float numLayers = mix(maxLayers, minLayers, abs(dot(vec3(0.0, 0.0, 1.0), v)));
+    float layerDepth = 1.0 / numLayers;
+
+    vec2 p = v.xy * height_scale;
+    vec2 deltaUV = p / numLayers;
+
+    vec2 currentUV = uv;
+    float currentBumpMapValue = texture(uBumpMapSampler2D, currentUV).r;
+    float currentLayerDepth = 0;
+
+    while (currentLayerDepth < currentBumpMapValue)
+    {
+        currentUV -= deltaUV;
+        currentBumpMapValue = texture(uBumpMapSampler2D, currentUV).r;
+        currentLayerDepth += layerDepth;
+    }
+
+    vec2 prevUV = currentUV + deltaUV;
+    float afterDepth = currentBumpMapValue - currentLayerDepth;
+    float beforeBampMapValue = texture(uBumpMapSampler2D, prevUV).r - currentLayerDepth + layerDepth;
+
+    float weight = afterDepth / (afterDepth - beforeBampMapValue);
+    vec2 finalUV = mix(prevUV, currentUV,  weight);
+
+    POMResult result;
+    result.uv = currentUV;
+    result.depth = texture(uBumpMapSampler2D, prevUV).r;
+
+    return result;
+}
+
+// https://habr.com/ru/post/416163/
+float GetParallaxSelfShadow(vec2 uv, vec3 l, float depth) {
+    const float height_scale = 0.1;
+	float shadowMultiplier = 0.;
+
+	float alignFactor = dot(vec3(0., 0., 1.), l);
+	if (alignFactor > 0.) {
+		const float minLayers = 16.;
+		const float maxLayers = 32.;
+		float numLayers = mix(maxLayers, minLayers, abs(alignFactor));
+		float deltaDepth = depth/numLayers;
+		vec2 deltaUV = height_scale * l.xy/(l.z * numLayers);
+
+		int numSamplesUnderSurface = 0;
+		float currentLayerDepth = depth - deltaDepth;
+		vec2 currentUV = uv + deltaUV;
+		float currentBumpMapValue = texture(uBumpMapSampler2D, currentUV).r;
+
+		float stepIndex = 1.;
+		while (currentLayerDepth > 0.) {
+			if (currentBumpMapValue < currentLayerDepth) {
+				float currentShadowMultiplier =
+                    (currentLayerDepth-currentBumpMapValue) * (1. - stepIndex/numLayers);
+				shadowMultiplier = max(shadowMultiplier, currentShadowMultiplier);
+
+                numSamplesUnderSurface++;
+			}
+
+			currentLayerDepth -= deltaDepth;
+			currentUV += deltaUV;
+			currentBumpMapValue = texture(uBumpMapSampler2D, currentUV).r;
+
+			stepIndex++;
+		}
+
+        shadowMultiplier = numSamplesUnderSurface < 1 ? 1 : 1. - shadowMultiplier;
+	}
+
+	return shadowMultiplier;
+}
+
+// See Real-Time Rendering (page 351)
 //  "This can only be applied to surfaces where the specular reflectane is that
 //  of a perfect Fresnel mirror."
-//So I assume it is not going to work right with Microfacet BRDFs.
+// So I assume it is not going to work right with Microfacet BRDFs.
 float ShirleyDiffuse(vec3 n, vec3 l, vec3 v, float roughness, float F0)
 {
     float lightScatter = 1 - pow(1 - max(0, dot(n, l)), 5);
@@ -52,7 +184,7 @@ float ShirleyDiffuse(vec3 n, vec3 l, vec3 v, float roughness, float F0)
     return  fresnelFactor * roughness * lightScatter * viewScatter;
 }
 
-//See Real-Time Rendering (page 355)
+// See Real-Time Rendering (page 355)
 float HeavisideStepFunction(float s)
 {
     return s <= 0.0 ? 0.0 : 1.0;
@@ -78,7 +210,9 @@ vec3 HammonDiffuse(vec3 n, vec3 l, vec3 v, vec3 h, float roughness, vec3 F0, vec
         ((1. - roughness) * f_smooth + roughness * f_rough + albedo * f_multi);
 }
 
+///////////////////////////////////////////////////////////
 // Unreal CookTorrance PBR (from Learn OpenGL)
+///////////////////////////////////////////////////////////
 vec3 FresnelSchlick(float cosTheta, vec3 F0)
 {
     return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
@@ -137,8 +271,9 @@ vec3 UnrealCookTorrance(vec3 n, vec3 l, vec3 v, vec3 h, float roughness, vec3 F0
     return specular;
 }
 
+///////////////////////////////////////////////////////////
 // Frostbite CookTorrance PBR
-
+///////////////////////////////////////////////////////////
 float F_Schlick(float f0, float f90, float u)
 {
     return f0 + (f90 - f0) * pow(1. - u, 5.);
@@ -197,28 +332,9 @@ vec3 ForstbiteCookTorrance(vec3 n, vec3 l, vec3 v, vec3 h, float alpha, vec3 F0)
     return Fr;
 }
 
-mat3 CalculateTBNMatrix( vec3 N, vec3 p, vec2 pUV )
-{
-    // get edge vectors of the pixel triangle
-    vec3 dp1 = dFdx( p );
-    vec3 dp2 = dFdy( p );
-    vec2 duv1 = dFdx( pUV );
-    vec2 duv2 = dFdy( pUV );
-
-    // solve the linear system
-    vec3 dp2perp = cross( dp2, N );
-    vec3 dp1perp = cross( N, dp1 );
-    vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
-    vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
-
-    // construct a scale-invariant frame
-    float invmax = inversesqrt( max( dot(T,T), dot(B,B) ) );
-    return mat3( T * invmax, B * invmax, N );
-}
-
 void main()
 {
-    mat3 TBN = CalculateTBNMatrix(normalWorld, positionWorld, uv);
+    mat3 TBN = CalculateTBNMatrix(normalWorld, positionWorld, inUV);
 
     vec3 pointLightsTBN[] = {
         TBN * vec3(-50.0f,  50.0f, 50.0f),
@@ -240,20 +356,31 @@ void main()
     vec3 positionTBN = TBN * positionWorld;
     vec3 cameraPositionTBN = TBN * cameraPositionWorld;
 
-    vec3 albedo = texture(uAlbedoMapSampler2D, uv).rgb;
-    float metalness = 0; //texture(uMetallicSampler2D, uv).r;
-    float roughness = clamp(texture(uRoughnessSampler2D, uv).r, 0.04f, 1.f);
-
-    vec3 n = normalize(texture(uNormalMapSampler2D, uv).rgb);
-    n = normalize(n * 2.0 - 1.0);
-    // vec3 n = TBN * normalWorld;
     vec3 v = normalize(cameraPositionTBN - positionTBN);
+    // vec2 uv = inUV;
+    POMResult pomResult = ParallaxOcclusionMapping(inUV, v);
+    vec2 uv = clamp(pomResult.uv, 0, 1);
+
+    vec3 albedo = bool(uAlbedoMapAvailableUint)
+        ? texture(uAlbedoMapSampler2D, uv).rgb
+        : uScalarAlbedoVec3f;
+    float metalness = bool(uMetallicAvailableUint)
+        ? texture(uMetallicSampler2D, uv).r
+        : uScalarMetalnessVec1f;
+    float roughness = bool(uRoughnessAvailableUint)
+        ? texture(uRoughnessSampler2D, uv).r
+        : uScalarRoughnessVec1f;
+    roughness = clamp(roughness, 0.04f, 1.f);
+
+    vec3 n = bool(uNormalMapAvailableUint)
+        ? normalize(normalize(texture(uNormalMapSampler2D, uv).rgb) * 2.f - 1.f)
+        : TBN * normalWorld;
 
     vec3 F0 = vec3(0.04);
     F0 = mix(F0, albedo, metalness);
 
     vec3 Lo = vec3(0);
-    for (int i = 0; i < 5 ; ++i)
+    for (int i = 0; i < 4 ; ++i)
     {
         vec3 l = normalize(pointLightsTBN[i] - positionTBN);
         vec3 h = normalize(l + v);
@@ -264,10 +391,12 @@ void main()
         vec3 radiance = pointLightColors[i] * ClampPunctualLightRadiance(
             length(pointLightsTBN[i] - positionTBN), pointLightRadiance[i]);
 
+        float visibility = GetParallaxSelfShadow(inUV, l, pomResult.depth);
+
         Lo += (
             kD * HammonDiffuse(n, l, v, h, roughness, F0, albedo)
             + ForstbiteCookTorrance(n, l, v, h, roughness * roughness, F0)
-        ) * radiance * max(0, dot(n, l));
+        ) * radiance * max(0, dot(n, l)) * visibility;
     }
 
     vec3 kS = FresnelSchlickRoughness(max(dot(n, v), 0.0), F0, roughness);

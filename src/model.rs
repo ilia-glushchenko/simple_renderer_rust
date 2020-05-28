@@ -48,6 +48,18 @@ pub struct HostMaterial {
     pub properties_samplers: Vec<MaterialProperty<tex::HostTexture>>,
 }
 
+impl HostMaterial {
+    pub fn empty() -> HostMaterial {
+        HostMaterial {
+            name: "".to_string(),
+            properties_1u: Vec::new(),
+            properties_1f: Vec::new(),
+            properties_3f: Vec::new(),
+            properties_samplers: Vec::new(),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct HostModel {
     pub meshes: Vec<HostMesh>,
@@ -96,29 +108,47 @@ pub struct DeviceMaterial {
     pub properties_samplers: Vec<MaterialProperty<TextureSampler>>,
 }
 
+impl DeviceMaterial {
+    pub fn set_svec1f(&mut self, name: &str, value: math::Vec1f) -> Result<(), String> {
+        if let Some(property) = self.properties_1f.iter_mut().find(|x| x.value.name == name) {
+            if property.value.data_location.data.len() == 1 {
+                property.value.data_location.data[0] = value;
+                return Ok(());
+            }
+            return Err(format!("Failed to set array property: '{}'", name).to_string());
+        }
+
+        Err(format!("Failed to find property: '{}'", name).to_string())
+    }
+
+    pub fn set_svec3f(&mut self, name: &str, value: math::Vec3f) -> Result<(), String> {
+        if let Some(property) = self.properties_3f.iter_mut().find(|x| x.value.name == name) {
+            if property.value.data_location.data.len() == 1 {
+                property.value.data_location.data[0] = value;
+                return Ok(());
+            }
+            return Err(format!("Failed to set array property: '{}'", name).to_string());
+        }
+
+        Err(format!("Failed to find property: '{}'", name).to_string())
+    }
+}
+
 #[derive(Clone)]
 pub struct DeviceModel {
     pub meshes: Vec<DeviceMesh>,
     pub materials: Vec<DeviceMaterial>,
 }
 
-pub fn create_empty_host_material() -> HostMaterial {
-    HostMaterial {
-        name: "".to_string(),
-        properties_1u: Vec::new(),
-        properties_1f: Vec::new(),
-        properties_3f: Vec::new(),
-        properties_samplers: Vec::new(),
-    }
-}
-
-pub fn create_empty_device_material() -> DeviceMaterial {
-    DeviceMaterial {
-        name: "".to_string(),
-        properties_1u: Vec::new(),
-        properties_1f: Vec::new(),
-        properties_3f: Vec::new(),
-        properties_samplers: Vec::new(),
+impl DeviceMaterial {
+    pub fn empty() -> DeviceMaterial {
+        DeviceMaterial {
+            name: "".to_string(),
+            properties_1u: Vec::new(),
+            properties_1f: Vec::new(),
+            properties_3f: Vec::new(),
+            properties_samplers: Vec::new(),
+        }
     }
 }
 

@@ -96,7 +96,7 @@ pub fn create_color_attachment_device_texture_descriptor() -> DeviceTextureDescr
         internal_format: gl::RGBA32F,
         format: gl::RGBA,
         data_type: gl::FLOAT,
-        use_mipmaps: true,
+        use_mipmaps: false,
     }
 }
 
@@ -115,6 +115,22 @@ pub fn create_spherical_hdri_texture_descriptor(
         format: convert_image_depth_to_gl_format(host_texture.depth),
         data_type: gl::FLOAT,
         use_mipmaps: false,
+    }
+}
+
+pub fn create_prefiltered_env_map_texture_descriptor() -> DeviceTextureDescriptor {
+    DeviceTextureDescriptor {
+        target: gl::TEXTURE_2D,
+        s_wrap: gl::CLAMP_TO_EDGE,
+        t_wrap: gl::CLAMP_TO_EDGE,
+        r_wrap: gl::CLAMP_TO_EDGE,
+        mag_filter: gl::LINEAR,
+        min_filter: gl::LINEAR_MIPMAP_LINEAR,
+        max_anisotropy: 1_f32,
+        internal_format: gl::RGBA32F,
+        format: gl::RGBA,
+        data_type: gl::FLOAT,
+        use_mipmaps: true,
     }
 }
 

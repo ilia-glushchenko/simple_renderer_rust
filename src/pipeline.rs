@@ -78,7 +78,14 @@ pub fn create_render_pipeline(
                 mip_level: 0,
             },
         ],
-        dependencies: Vec::new(),
+        dependencies: vec![pass::PassDependencyDescriptor {
+            name: "uDepthMapSampler2D".to_string(),
+            source: pass::OtherPassTextureSource {
+                pipeline_index: 0,
+                attachment_index: 0,
+                device_texture: depth_pre_pass.attachments[0].texture.clone(),
+            },
+        }],
         width: window.width,
         height: window.height,
     };

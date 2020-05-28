@@ -37,5 +37,4 @@ vec3 acesFilm(const vec3 x) {
 void main()
 {
     outColor = vec4(acesFilm(texture(uColorSampler2D, uv, 0).rgb), 1);
-    //outColor = vec4(texture(uColorSampler2D, uv, 0).rgb, 1);
 }

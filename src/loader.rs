@@ -60,7 +60,7 @@ pub fn load_device_model_from_obj(path: &Path) -> model::DeviceModel {
     device_model
 }
 
-pub fn load_host_texture_from_file(path: &Path, name: String) -> Result<tex::HostTexture, String> {
+pub fn load_host_texture_from_file(path: &Path, name: &str) -> Result<tex::HostTexture, String> {
     match image::load(path) {
         image::LoadResult::ImageU8(image) => {
             log::log_info(format!(
@@ -69,7 +69,7 @@ pub fn load_host_texture_from_file(path: &Path, name: String) -> Result<tex::Hos
             ));
 
             Ok(tex::HostTexture {
-                name,
+                name: name.to_string(),
                 width: image.width,
                 height: image.height,
                 depth: image.depth,
@@ -83,7 +83,7 @@ pub fn load_host_texture_from_file(path: &Path, name: String) -> Result<tex::Hos
             ));
 
             Ok(tex::HostTexture {
-                name,
+                name: name.to_string(),
                 width: image.width,
                 height: image.height,
                 depth: image.depth,
@@ -96,7 +96,6 @@ pub fn load_host_texture_from_file(path: &Path, name: String) -> Result<tex::Hos
                 path.to_str().unwrap_or_default(),
                 msg
             );
-            log::log_error(msg.clone());
             Err(msg)
         }
     }
@@ -222,14 +221,16 @@ fn create_host_material_from_tobj_material(
     folder_path: &Path,
     raw_material: &tobj::Material,
 ) -> model::HostMaterial {
-    struct TextureLoadInfo {
+    struct TextureLoadInfo<'a> {
         path: PathBuf,
-        name: String,
+        text_name: &'a str,
+        bool_name: &'a str,
     }
     let texture_load_infos: Vec<TextureLoadInfo> = vec![
         TextureLoadInfo {
             path: folder_path.join(Path::new(&raw_material.diffuse_texture)),
-            name: "uAlbedoMapSampler2D".to_string(),
+            text_name: "uAlbedoMapSampler2D",
+            bool_name: "uAlbedoMapAvailableUint",
         },
         TextureLoadInfo {
             path: folder_path.join(Path::new(
@@ -239,7 +240,8 @@ fn create_host_material_from_tobj_material(
                     .unwrap_or(&"".to_string())
                     .to_string(),
             )),
-            name: "uNormalMapSampler2D".to_string(),
+            text_name: "uNormalMapSampler2D",
+            bool_name: "uNormalMapAvailableUint",
         },
         TextureLoadInfo {
             path: folder_path.join(Path::new(
@@ -249,7 +251,8 @@ fn create_host_material_from_tobj_material(
                     .unwrap_or(&"".to_string())
                     .to_string(),
             )),
-            name: "uBumpMapSampler2D".to_string(),
+            text_name: "uBumpMapSampler2D",
+            bool_name: "uBumpMapAvailableUint",
         },
         TextureLoadInfo {
             path: folder_path.join(Path::new(
@@ -259,7 +262,8 @@ fn create_host_material_from_tobj_material(
                     .unwrap_or(&"".to_string())
                     .to_string(),
             )),
-            name: "uMetallicSampler2D".to_string(),
+            text_name: "uMetallicSampler2D",
+            bool_name: "uMetallicAvailableUint",
         },
         TextureLoadInfo {
             path: folder_path.join(Path::new(
@@ -269,14 +273,16 @@ fn create_host_material_from_tobj_material(
                     .unwrap_or(&"".to_string())
                     .to_string(),
             )),
-            name: "uRoughnessSampler2D".to_string(),
+            text_name: "uRoughnessSampler2D",
+            bool_name: "uRoughnessAvailableUint",
         },
     ]
     .into_iter()
-    .filter(|x| x.path.is_file())
+    // .filter(|x| x.path.is_file())
     .collect();
 
     let pool_size = texture_load_infos.len();
+    let mut states = Vec::<(String, bool)>::new();
     let mut textures = Vec::<tex::HostTexture>::new();
     if pool_size > 0 {
         let pool = ThreadPool::new(pool_size);
@@ -285,12 +291,17 @@ fn create_host_material_from_tobj_material(
             let sender = sender.clone();
             pool.execute(move || {
                 sender
-                    .send(load_host_texture_from_file(&info.path, info.name))
+                    .send((
+                        load_host_texture_from_file(&info.path, &info.text_name),
+                        info.bool_name,
+                    ))
                     .unwrap();
             });
         }
         for texture_load_result in receiver.iter().take(pool_size) {
-            if let Ok(texture) = texture_load_result {
+            let (result, bool_name) = texture_load_result;
+            states.push((bool_name.to_string(), result.is_ok()));
+            if let Ok(texture) = result {
                 textures.push(texture);
             }
         }
@@ -299,7 +310,13 @@ fn create_host_material_from_tobj_material(
     model::HostMaterial {
         name: raw_material.name.clone(),
 
-        properties_1u: Vec::new(),
+        properties_1u: states
+            .iter()
+            .map(|x| model::MaterialProperty::<math::Vec1u> {
+                name: x.0.clone(),
+                value: math::Vec1u::new(x.1 as u32),
+            })
+            .collect(),
 
         //ToDo: Those are default values, need to replace them with
         //values from the actual raw materials

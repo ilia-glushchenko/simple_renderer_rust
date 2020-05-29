@@ -18,15 +18,14 @@ pub fn create_specular_cube_map_texture(
     let width: u32 = 2048;
     let height: u32 = 2048;
 
-    let (mut techs, mut pass) = create_hdri_2_cube_map_pass(host_texture, box_model, width, height);
+    let (mut techs, pass) = create_hdri_2_cube_map_pass(host_texture, box_model, width, height);
 
-    let fbos = draw_cubemap(&mut techs, &mut pass, &box_model);
+    let (fbos, pass) = draw_cubemap(&mut techs, pass, &box_model);
 
     let desc = tex::create_spherical_hdri_texture_descriptor(&host_texture);
     let cubemap = create_cubemap(&desc, width, height, &fbos);
 
-    cleanup_cubemap_fbos(fbos, &mut techs, pass, box_model);
-    tech::delete_techniques(techs);
+    cleanup_cubemap_fbos(&mut techs, box_model, &pass);
 
     cubemap
 }
@@ -38,15 +37,15 @@ pub fn create_diffuse_cube_map_texture(
     let width: u32 = 32;
     let height: u32 = 32;
 
-    let (mut techs, mut pass) =
+    let (mut techs, pass) =
         create_diffuse_cubemap_convolution_pass(cube_map, box_model, width, height);
 
-    let fbos = draw_cubemap(&mut techs, &mut pass, &box_model);
+    let (fbos, pass) = draw_cubemap(&mut techs, pass, &box_model);
 
     let desc = tex::create_color_attachment_device_texture_descriptor();
     let cubemap = create_cubemap(&desc, width, height, &fbos);
 
-    cleanup_cubemap_fbos(fbos, &mut techs, pass, box_model);
+    cleanup_cubemap_fbos(&mut techs, box_model, &pass);
 
     cubemap
 }
@@ -94,7 +93,7 @@ pub fn create_prefiltered_environment_map(
             pass.height = height;
 
             techniques::ibl::prefiltered_envirnoment_map::update(
-                techs.get_mut(&tech::Techniques::IBL).unwrap(),
+                techs.map.get_mut(&tech::Techniques::IBL).unwrap(),
                 views[face_index],
                 roughness,
             );
@@ -113,21 +112,18 @@ pub fn create_brdf_lut() -> Rc<tex::DeviceTexture> {
     let (mut techs, mut pass, mut model) = create_brdf_integration_map_pass(width, height);
     pass::execute_render_pass(&pass, &techs, &model);
 
-    let result = pass.attachments[0].texture.clone();
-    pass.attachments.clear();
+    let result = pass.fbo.attachments[0].texture.clone();
+    pass.fbo.attachments.clear();
 
     pass::unbind_techniques_from_render_pass(&mut techs, pass.program.handle);
     pass::unbind_device_model_from_render_pass(&mut model, pass.program.handle);
     pass::unbind_techniques_from_render_pass(&mut techs, pass.program.handle);
-    pass::delete_render_pass(&mut pass);
-    model::delete_device_model(model);
 
     result
 }
 
 struct PassFbo {
-    fbo: u32,
-    attachments: Vec<pass::PassAttachment>,
+    fbo: pass::Framebuffer,
 }
 
 struct CubeMapFbos {
@@ -167,37 +163,37 @@ fn create_cubemap(
         }
 
         pass::copy_framebuffer_to_texture(
-            fbos.nz.fbo,
+            fbos.nz.fbo.handle,
             width,
             height,
             gl::TEXTURE_CUBE_MAP_NEGATIVE_Z,
         );
         pass::copy_framebuffer_to_texture(
-            fbos.pz.fbo,
+            fbos.pz.fbo.handle,
             width,
             height,
             gl::TEXTURE_CUBE_MAP_POSITIVE_Z,
         );
         pass::copy_framebuffer_to_texture(
-            fbos.nx.fbo,
+            fbos.nx.fbo.handle,
             width,
             height,
             gl::TEXTURE_CUBE_MAP_NEGATIVE_X,
         );
         pass::copy_framebuffer_to_texture(
-            fbos.px.fbo,
+            fbos.px.fbo.handle,
             width,
             height,
             gl::TEXTURE_CUBE_MAP_POSITIVE_X,
         );
         pass::copy_framebuffer_to_texture(
-            fbos.ny.fbo,
+            fbos.ny.fbo.handle,
             width,
             height,
             gl::TEXTURE_CUBE_MAP_NEGATIVE_Y,
         );
         pass::copy_framebuffer_to_texture(
-            fbos.py.fbo,
+            fbos.py.fbo.handle,
             width,
             height,
             gl::TEXTURE_CUBE_MAP_POSITIVE_Y,
@@ -284,86 +280,79 @@ fn create_empty_cubemap(
 }
 
 fn cleanup_cubemap_fbos(
-    mut fbos: CubeMapFbos,
-    techs: &mut tech::TechniqueMap,
-    mut pass: pass::Pass,
+    techs: &mut tech::TechniqueContainer,
     box_model: &mut model::DeviceModel,
+    pass: &pass::Pass,
 ) {
-    pass::delete_pass_attachments(&mut fbos.nz.attachments);
-    unsafe { gl::DeleteFramebuffers(1, &fbos.nz.fbo as *const u32) };
-    pass::delete_pass_attachments(&mut fbos.pz.attachments);
-    unsafe { gl::DeleteFramebuffers(1, &fbos.pz.fbo as *const u32) };
-    pass::delete_pass_attachments(&mut fbos.py.attachments);
-    unsafe { gl::DeleteFramebuffers(1, &fbos.py.fbo as *const u32) };
-    pass::delete_pass_attachments(&mut fbos.ny.attachments);
-    unsafe { gl::DeleteFramebuffers(1, &fbos.ny.fbo as *const u32) };
-    pass::delete_pass_attachments(&mut fbos.nx.attachments);
-    unsafe { gl::DeleteFramebuffers(1, &fbos.nx.fbo as *const u32) };
-    pass::delete_pass_attachments(&mut fbos.px.attachments);
-    unsafe { gl::DeleteFramebuffers(1, &fbos.px.fbo as *const u32) };
-
     pass::unbind_techniques_from_render_pass(techs, pass.program.handle);
     pass::unbind_device_model_from_render_pass(box_model, pass.program.handle);
     pass::unbind_techniques_from_render_pass(techs, pass.program.handle);
-    pass::delete_render_pass(&mut pass);
 }
 
 fn draw_cubemap(
-    techs: &mut tech::TechniqueMap,
-    pass: &mut pass::Pass,
+    techs: &mut tech::TechniqueContainer,
+    pass: pass::Pass,
     box_model: &model::DeviceModel,
-) -> CubeMapFbos {
-    CubeMapFbos {
-        nz: draw_cubemap_face(
-            techs,
-            math::y_rotation_mat4x4(-f32::consts::PI / 2.),
-            pass,
-            &box_model,
-        ),
-        pz: draw_cubemap_face(
-            techs,
-            math::y_rotation_mat4x4(f32::consts::PI / 2.),
-            pass,
-            &box_model,
-        ),
-        py: draw_cubemap_face(
-            techs,
-            math::x_rotation_mat4x4(f32::consts::PI / 2.)
-                * math::y_rotation_mat4x4(f32::consts::PI / 2.),
-            pass,
-            &box_model,
-        ),
-        ny: draw_cubemap_face(
-            techs,
-            math::x_rotation_mat4x4(-f32::consts::PI / 2.)
-                * math::y_rotation_mat4x4(f32::consts::PI / 2.),
-            pass,
-            &box_model,
-        ),
-        nx: draw_cubemap_face(techs, math::identity_mat4x4(), pass, &box_model),
-        px: draw_cubemap_face(
-            techs,
-            math::y_rotation_mat4x4(-f32::consts::PI),
-            pass,
-            &box_model,
-        ),
-    }
+) -> (CubeMapFbos, pass::Pass) {
+    let (nz, pass) = draw_cubemap_face(
+        techs,
+        math::y_rotation_mat4x4(-f32::consts::PI / 2.),
+        pass,
+        &box_model,
+    );
+    let (pz, pass) = draw_cubemap_face(
+        techs,
+        math::y_rotation_mat4x4(f32::consts::PI / 2.),
+        pass,
+        &box_model,
+    );
+    let (py, pass) = draw_cubemap_face(
+        techs,
+        math::x_rotation_mat4x4(f32::consts::PI / 2.)
+            * math::y_rotation_mat4x4(f32::consts::PI / 2.),
+        pass,
+        &box_model,
+    );
+    let (ny, pass) = draw_cubemap_face(
+        techs,
+        math::x_rotation_mat4x4(-f32::consts::PI / 2.)
+            * math::y_rotation_mat4x4(f32::consts::PI / 2.),
+        pass,
+        &box_model,
+    );
+    let (nx, pass) = draw_cubemap_face(techs, math::identity_mat4x4(), pass, &box_model);
+    let (px, pass) = draw_cubemap_face(
+        techs,
+        math::y_rotation_mat4x4(-f32::consts::PI),
+        pass,
+        &box_model,
+    );
+
+    (
+        CubeMapFbos {
+            nz,
+            pz,
+            py,
+            ny,
+            nx,
+            px,
+        },
+        pass,
+    )
 }
 
 fn draw_cubemap_face(
-    techs: &mut tech::TechniqueMap,
+    techs: &mut tech::TechniqueContainer,
     view: math::Mat4x4f,
-    pass: &mut pass::Pass,
+    mut pass: pass::Pass,
     box_model: &model::DeviceModel,
-) -> PassFbo {
-    techniques::ibl::update(techs.get_mut(&tech::Techniques::IBL).unwrap(), view);
+) -> (PassFbo, pass::Pass) {
+    techniques::ibl::update(techs.map.get_mut(&tech::Techniques::IBL).unwrap(), view);
     pass::execute_render_pass(&pass, &techs, &box_model);
-    let attachments = pass.attachments.clone();
     let fbo = pass.fbo;
-    pass.attachments = create_attachments(pass.width, pass.height);
-    pass.fbo = pass::create_framebuffer_object(&pass.attachments).unwrap();
+    pass.fbo = pass::Framebuffer::new(create_attachments(pass.width, pass.height)).unwrap();
 
-    PassFbo { fbo, attachments }
+    (PassFbo { fbo }, pass)
 }
 
 fn create_hdri_2_cube_map_pass(
@@ -371,9 +360,9 @@ fn create_hdri_2_cube_map_pass(
     box_model: &mut model::DeviceModel,
     width: u32,
     height: u32,
-) -> (tech::TechniqueMap, pass::Pass) {
-    let mut techs = tech::TechniqueMap::new();
-    techs.insert(
+) -> (tech::TechniqueContainer, pass::Pass) {
+    let mut techs = tech::TechniqueContainer::new();
+    techs.map.insert(
         tech::Techniques::IBL,
         techniques::ibl::hdri2cube::create(
             math::perspective_projection_mat4x4(f32::consts::PI / 2.0, 1., 0.98, 1.01),
@@ -410,7 +399,7 @@ fn create_hdri_2_cube_map_pass(
         height,
     };
 
-    let pass = pass::create_render_pass(pass_desc).expect("Failed to create HDRI render pass.");
+    let pass = pass::Pass::new(pass_desc).expect("Failed to create HDRI render pass.");
 
     pass::bind_techniques_to_render_pass(&mut techs, &pass);
     pass::bind_device_model_to_render_pass(box_model, &pass);
@@ -426,9 +415,9 @@ fn create_diffuse_cubemap_convolution_pass(
     box_model: &mut model::DeviceModel,
     width: u32,
     height: u32,
-) -> (tech::TechniqueMap, pass::Pass) {
-    let mut techs = tech::TechniqueMap::new();
-    techs.insert(
+) -> (tech::TechniqueContainer, pass::Pass) {
+    let mut techs = tech::TechniqueContainer::new();
+    techs.map.insert(
         tech::Techniques::IBL,
         techniques::ibl::diffuse_cubemap_convolution::create(
             math::perspective_projection_mat4x4(f32::consts::PI / 2.0, 1., 0.98, 1.01),
@@ -462,7 +451,7 @@ fn create_diffuse_cubemap_convolution_pass(
         height,
     };
 
-    let pass = pass::create_render_pass(pass_desc).expect("Failed to create HDRI render pass.");
+    let pass = pass::Pass::new(pass_desc).expect("Failed to create HDRI render pass.");
 
     pass::bind_techniques_to_render_pass(&mut techs, &pass);
     pass::bind_device_model_to_render_pass(box_model, &pass);
@@ -476,9 +465,9 @@ fn create_diffuse_cubemap_convolution_pass(
 fn create_brdf_integration_map_pass(
     width: u32,
     height: u32,
-) -> (tech::TechniqueMap, pass::Pass, model::DeviceModel) {
-    let mut techs = tech::TechniqueMap::new();
-    techs.insert(
+) -> (tech::TechniqueContainer, pass::Pass, model::DeviceModel) {
+    let mut techs = tech::TechniqueContainer::new();
+    techs.map.insert(
         tech::Techniques::IBL,
         techniques::ibl::brdf_integration_map::create(),
     );
@@ -512,8 +501,7 @@ fn create_brdf_integration_map_pass(
         height,
     };
 
-    let pass =
-        pass::create_render_pass(pass_desc).expect("Failed to create BRDF integration pass.");
+    let pass = pass::Pass::new(pass_desc).expect("Failed to create BRDF integration pass.");
     let mut fullscreen_model = helper::create_full_screen_triangle_model();
     pass::bind_techniques_to_render_pass(&mut techs, &pass);
     pass::bind_device_model_to_render_pass(&mut fullscreen_model, &pass);
@@ -530,9 +518,9 @@ fn create_prefiltered_environment_map_pass(
     box_model: &mut model::DeviceModel,
     width: u32,
     height: u32,
-) -> (tech::TechniqueMap, pass::Pass) {
-    let mut techs = tech::TechniqueMap::new();
-    techs.insert(
+) -> (tech::TechniqueContainer, pass::Pass) {
+    let mut techs = tech::TechniqueContainer::new();
+    techs.map.insert(
         tech::Techniques::IBL,
         techniques::ibl::prefiltered_envirnoment_map::create(
             math::perspective_projection_mat4x4(f32::consts::PI / 2.0, 1., 0.98, 1.01),
@@ -563,7 +551,7 @@ fn create_prefiltered_environment_map_pass(
         height,
     };
 
-    let pass = pass::create_render_pass(pass_desc).expect("Failed to create HDRI render pass.");
+    let pass = pass::Pass::new(pass_desc).expect("Failed to create HDRI render pass.");
 
     pass::bind_techniques_to_render_pass(&mut techs, &pass);
     pass::bind_device_model_to_render_pass(box_model, &pass);

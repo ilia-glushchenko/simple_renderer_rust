@@ -35,6 +35,12 @@ pub struct DeviceTexture {
     pub target: gl::types::GLenum,
 }
 
+impl Drop for DeviceTexture {
+    fn drop(&mut self) {
+        unsafe { gl::DeleteTextures(1, &self.handle) };
+    }
+}
+
 #[derive(Clone)]
 pub struct DeviceTextureDescriptor {
     pub target: gl::types::GLenum,
@@ -219,10 +225,6 @@ pub fn create_device_texture(
         handle,
         target: desc.target,
     })
-}
-
-pub fn delete_device_texture(device_texture: &DeviceTexture) {
-    unsafe { gl::DeleteTextures(1, &device_texture.handle) };
 }
 
 pub fn convert_image_depth_to_gl_internal_format(image_depth: usize) -> gl::types::GLenum {

@@ -52,50 +52,50 @@ fn load_wall() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
     (device_model, trasforms)
 }
 
-#[allow(dead_code)]
-fn load_pbr_sphere() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
-    let mut device_model =
-        loader::load_device_model_from_obj(Path::new("data/models/pbr-sphere/sphere.obj"));
+// #[allow(dead_code)]
+// fn load_pbr_sphere() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
+//     let mut device_model =
+//         loader::load_device_model_from_obj(Path::new("data/models/pbr-sphere/sphere.obj"));
 
-    let mesh = device_model.meshes[0].clone();
-    let mut material = device_model.materials[0].clone();
-    material
-        .set_svec3f("uScalarAlbedoVec3f", math::Vec3f::new(1., 1., 1.))
-        .unwrap();
-    material.properties_3f[0].value.data_location.data[0] = math::Vec3f::new(1., 1., 1.);
-    let mut transforms = Vec::new();
+//     let mesh = device_model.meshes[0].clone();
+//     let mut material = device_model.materials[0].clone();
+//     material
+//         .set_svec3f("uScalarAlbedoVec3f", math::Vec3f::new(1., 1., 1.))
+//         .unwrap();
+//     material.properties_3f[0].value.data_location.data[0] = math::Vec3f::new(1., 1., 1.);
+//     let mut transforms = Vec::new();
 
-    device_model.meshes.clear();
-    device_model.materials.clear();
+//     device_model.meshes.clear();
+//     device_model.materials.clear();
 
-    for x in (-10..12).step_by(2) {
-        for y in (-10..12).step_by(2) {
-            let mut material = material.clone();
-            let roughness = (x + 10) as f32 / 20.;
-            let metalness = (y + 10) as f32 / 20.;
+//     for x in (-10..12).step_by(2) {
+//         for y in (-10..12).step_by(2) {
+//             let mut material = material.clone();
+//             let roughness = (x + 10) as f32 / 20.;
+//             let metalness = (y + 10) as f32 / 20.;
 
-            material
-                .set_svec1f("uScalarRoughnessVec1f", math::Vec1f::new(roughness))
-                .unwrap();
-            material
-                .set_svec1f("uScalarMetalnessVec1f", math::Vec1f::new(metalness))
-                .unwrap();
-            device_model.materials.push(material);
+//             material
+//                 .set_svec1f("uScalarRoughnessVec1f", math::Vec1f::new(roughness))
+//                 .unwrap();
+//             material
+//                 .set_svec1f("uScalarMetalnessVec1f", math::Vec1f::new(metalness))
+//                 .unwrap();
+//             device_model.materials.push(material);
 
-            let mut mesh = mesh.clone();
-            mesh.material_index = device_model.materials.len() - 1;
-            device_model.meshes.push(mesh.clone());
+//             let mut mesh = mesh.clone();
+//             mesh.material_index = device_model.materials.len() - 1;
+//             device_model.meshes.push(mesh.clone());
 
-            transforms.push(math::tranlation_mat4x4(math::Vec3f {
-                x: x as f32,
-                y: y as f32,
-                z: 0.,
-            }));
-        }
-    }
+//             transforms.push(math::tranlation_mat4x4(math::Vec3f {
+//                 x: x as f32,
+//                 y: y as f32,
+//                 z: 0.,
+//             }));
+//         }
+//     }
 
-    (device_model, transforms)
-}
+//     (device_model, transforms)
+// }
 
 #[allow(dead_code)]
 fn load_pbr_spheres() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
@@ -169,14 +169,6 @@ fn main_loop(window: &mut app::Window) {
     // let (mut device_model_full, transforms) = load_pbr_sphere();
     // let (mut device_model_full, transforms) = load_sponza();
     let (mut device_model_full, transforms) = load_wall();
-    let mut device_model_short = model::DeviceModel {
-        meshes: device_model_full.meshes.clone(),
-        materials: device_model_full
-            .materials
-            .iter()
-            .map(|_| model::DeviceMaterial::empty())
-            .collect(),
-    };
     let mut camera = camera::create_default_camera(window.width, window.height);
 
     let (mvp_technique, lighting_technique, skybox_technique, tone_mapping) = {
@@ -205,21 +197,28 @@ fn main_loop(window: &mut app::Window) {
         (mvp, lighting, skybox, tone_mapping)
     };
 
-    let mut techniques = tech::TechniqueMap::new();
-    techniques.insert(tech::Techniques::MVP, mvp_technique);
-    techniques.insert(tech::Techniques::Lighting, lighting_technique);
-    techniques.insert(tech::Techniques::Skybox, skybox_technique);
-    techniques.insert(tech::Techniques::ToneMapping, tone_mapping);
+    let mut techniques = tech::TechniqueContainer::new();
+    techniques.map.insert(tech::Techniques::MVP, mvp_technique);
+    techniques
+        .map
+        .insert(tech::Techniques::Lighting, lighting_technique);
+    techniques
+        .map
+        .insert(tech::Techniques::Skybox, skybox_technique);
+    techniques
+        .map
+        .insert(tech::Techniques::ToneMapping, tone_mapping);
 
-    let mut pipeline = pipeline::create_render_pipeline(&mut techniques, window);
+    let mut pipeline = pipeline::Pipeline::new(window);
     match &mut pipeline {
         Ok(ref mut pipeline) => {
-            pass::bind_device_model_to_render_pass(&mut device_model_short, &pipeline[0]);
-            pass::bind_device_model_to_render_pass(&mut device_model_full, &pipeline[1]);
-            pass::bind_device_model_to_render_pass(&mut box_model, &pipeline[2]);
-            pass::bind_device_model_to_render_pass(&mut fullscreen_model, &pipeline[3]);
+            techniques.bind_pipeline(&pipeline);
+            pass::bind_device_model_to_render_pass(&mut device_model_full, &pipeline.passes[0]);
+            pass::bind_device_model_to_render_pass(&mut device_model_full, &pipeline.passes[1]);
+            pass::bind_device_model_to_render_pass(&mut box_model, &pipeline.passes[2]);
+            pass::bind_device_model_to_render_pass(&mut fullscreen_model, &pipeline.passes[3]);
             if let Err(msg) =
-                pipeline::is_render_pipeline_valid(pipeline, &techniques, &device_model_full)
+                pipeline::is_render_pipeline_valid(&pipeline, &techniques, &device_model_full)
             {
                 log::log_error(msg);
             }
@@ -236,20 +235,23 @@ fn main_loop(window: &mut app::Window) {
         input::update_cursor_mode(window, &mut input_data);
         input::update_camera(&mut camera, window, &input_data);
 
-        techniques::mvp::update(techniques.get_mut(&tech::Techniques::MVP).unwrap(), &camera);
+        techniques::mvp::update(
+            techniques.map.get_mut(&tech::Techniques::MVP).unwrap(),
+            &camera,
+        );
         techniques::lighting::update(
-            techniques.get_mut(&tech::Techniques::Lighting).unwrap(),
+            techniques.map.get_mut(&tech::Techniques::Lighting).unwrap(),
             &camera,
         );
         techniques::skybox::update(
-            techniques.get_mut(&tech::Techniques::Skybox).unwrap(),
+            techniques.map.get_mut(&tech::Techniques::Skybox).unwrap(),
             &camera,
         );
 
         if let Ok(ref mut pipeline) = &mut pipeline {
             if let Some(input::Action::Press) = input_data.keys.get(&input::Key::F5) {
                 let pipeline_program_handles: Vec<u32> =
-                    pipeline.iter().map(|x| x.program.handle).collect();
+                    pipeline.passes.iter().map(|x| x.program.handle).collect();
 
                 if let Err(msg) = pipeline::reload_render_pipeline(pipeline) {
                     log::log_error(format!("Failed to hot reload pipeline:\n{}", msg));
@@ -262,30 +264,39 @@ fn main_loop(window: &mut app::Window) {
                     }
 
                     pass::unbind_device_model_from_render_pass(
-                        &mut device_model_short,
-                        pipeline[0].program.handle,
+                        &mut device_model_full,
+                        pipeline.passes[0].program.handle,
                     );
                     pass::unbind_device_model_from_render_pass(
                         &mut device_model_full,
-                        pipeline[1].program.handle,
+                        pipeline.passes[1].program.handle,
                     );
                     pass::unbind_device_model_from_render_pass(
                         &mut box_model,
-                        pipeline[2].program.handle,
+                        pipeline.passes[2].program.handle,
                     );
                     pass::unbind_device_model_from_render_pass(
                         &mut fullscreen_model,
-                        pipeline[3].program.handle,
+                        pipeline.passes[3].program.handle,
                     );
 
-                    for pass in pipeline.iter_mut() {
+                    for pass in pipeline.passes.iter_mut() {
                         pass::bind_techniques_to_render_pass(&mut techniques, pass);
                     }
 
-                    pass::bind_device_model_to_render_pass(&mut device_model_short, &pipeline[0]);
-                    pass::bind_device_model_to_render_pass(&mut device_model_full, &pipeline[1]);
-                    pass::bind_device_model_to_render_pass(&mut box_model, &pipeline[2]);
-                    pass::bind_device_model_to_render_pass(&mut fullscreen_model, &pipeline[3]);
+                    pass::bind_device_model_to_render_pass(
+                        &mut device_model_full,
+                        &pipeline.passes[0],
+                    );
+                    pass::bind_device_model_to_render_pass(
+                        &mut device_model_full,
+                        &pipeline.passes[1],
+                    );
+                    pass::bind_device_model_to_render_pass(&mut box_model, &pipeline.passes[2]);
+                    pass::bind_device_model_to_render_pass(
+                        &mut fullscreen_model,
+                        &pipeline.passes[3],
+                    );
 
                     if let Err(msg) = pipeline::is_render_pipeline_valid(
                         pipeline,
@@ -307,12 +318,12 @@ fn main_loop(window: &mut app::Window) {
                 }
             }
 
-            pass::execute_render_pass(&pipeline[0], &techniques, &device_model_full);
-            pass::execute_render_pass(&pipeline[1], &techniques, &device_model_full);
-            pass::execute_render_pass(&pipeline[2], &techniques, &box_model);
-            pass::execute_render_pass(&pipeline[3], &techniques, &fullscreen_model);
+            pass::execute_render_pass(&pipeline.passes[0], &techniques, &device_model_full);
+            pass::execute_render_pass(&pipeline.passes[1], &techniques, &device_model_full);
+            pass::execute_render_pass(&pipeline.passes[2], &techniques, &box_model);
+            pass::execute_render_pass(&pipeline.passes[3], &techniques, &fullscreen_model);
 
-            pass::blit_framebuffer_to_backbuffer(&pipeline.last().unwrap(), window);
+            pass::blit_framebuffer_to_backbuffer(&pipeline.passes.last().unwrap(), window);
         }
 
         window.handle.swap_buffers();
@@ -321,24 +332,22 @@ fn main_loop(window: &mut app::Window) {
     if let Ok(ref mut pipeline) = pipeline {
         pass::unbind_device_model_from_render_pass(
             &mut device_model_full,
-            pipeline[0].program.handle,
+            pipeline.passes[0].program.handle,
         );
         pass::unbind_device_model_from_render_pass(
             &mut device_model_full,
-            pipeline[1].program.handle,
+            pipeline.passes[1].program.handle,
         );
-        pass::unbind_device_model_from_render_pass(&mut box_model, pipeline[2].program.handle);
+        pass::unbind_device_model_from_render_pass(
+            &mut box_model,
+            pipeline.passes[2].program.handle,
+        );
         pass::unbind_device_model_from_render_pass(
             &mut fullscreen_model,
-            pipeline[3].program.handle,
+            pipeline.passes[3].program.handle,
         );
-        pipeline::delete_render_pipeline(&mut techniques, pipeline);
+        techniques.unbind_pipeline(&pipeline);
     }
-
-    tech::delete_techniques(techniques);
-    model::delete_device_model(device_model_full);
-    model::delete_device_model(box_model);
-    model::delete_device_model(fullscreen_model);
 }
 
 fn main() {

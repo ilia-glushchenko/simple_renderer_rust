@@ -2,14 +2,39 @@ extern crate gl;
 use crate::log;
 use crate::math;
 use crate::model;
+use crate::pass;
+use crate::pipeline;
 use crate::shader;
-use crate::tex;
 use std::collections::HashMap;
 use std::ptr::null;
 use std::string::String;
 use std::vec::Vec;
 
-pub type TechniqueMap = HashMap<Techniques, Technique>;
+pub struct TechniqueContainer {
+    pub map: HashMap<Techniques, Technique>,
+}
+
+impl TechniqueContainer {
+    pub fn new() -> TechniqueContainer {
+        TechniqueContainer {
+            map: HashMap::new(),
+        }
+    }
+}
+
+impl TechniqueContainer {
+    pub fn bind_pipeline(&mut self, pipeline: &pipeline::Pipeline) {
+        for pass in pipeline.passes.iter() {
+            pass::bind_techniques_to_render_pass(self, &pass);
+        }
+    }
+
+    pub fn unbind_pipeline(&mut self, pipeline: &pipeline::Pipeline) {
+        for pass in pipeline.passes.iter() {
+            pass::unbind_techniques_from_render_pass(self, pass.program.handle);
+        }
+    }
+}
 
 #[derive(PartialEq, Clone)]
 pub struct UniformProgramLocation {
@@ -120,14 +145,6 @@ pub enum Techniques {
 }
 
 impl Eq for Techniques {}
-
-pub fn delete_techniques(techs: TechniqueMap) {
-    for tech in techs.values() {
-        for sampler in &tech.textures {
-            tex::delete_device_texture(&sampler.texture);
-        }
-    }
-}
 
 pub fn create_new_uniform<T>(name: &str, data: T) -> Uniform<T> {
     Uniform::<T> {

@@ -10,6 +10,7 @@ use stb_image::image;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::mpsc::channel;
 use threadpool::ThreadPool;
 
@@ -138,7 +139,10 @@ pub fn load_host_model_from_obj(file_path: &Path) -> model::HostModel {
         meshes.push(create_host_mesh_from_tobj_mesh(raw_model));
     }
 
-    model::HostModel { meshes, materials }
+    model::HostModel {
+        meshes: Rc::new(meshes),
+        materials: Rc::new(materials),
+    }
 }
 
 fn create_host_mesh_from_tobj_mesh(raw_model: &tobj::Model) -> model::HostMesh {

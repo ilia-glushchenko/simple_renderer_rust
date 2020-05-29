@@ -18,7 +18,7 @@ layout (location = 3) out vec3 cameraPositionWorld;
 
 void main()
 {
-    uv = aUV;
+    uv = aUV * 2;
     normalWorld = normalize(vec3(uModelMat4 * vec4(aNormal, 0.0)));
     positionWorld = (uModelMat4 * vec4(aPosition, 1)).xyz;
     cameraPositionWorld = uCameraPosVec3;

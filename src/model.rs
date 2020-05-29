@@ -62,11 +62,10 @@ impl HostMaterial {
 
 #[derive(Clone)]
 pub struct HostModel {
-    pub meshes: Vec<HostMesh>,
-    pub materials: Vec<HostMaterial>,
+    pub meshes: Rc<Vec<HostMesh>>,
+    pub materials: Rc<Vec<HostMaterial>>,
 }
 
-#[derive(Clone)]
 pub struct DeviceMesh {
     pub vao: u32,
     pub index_count: u32,
@@ -74,6 +73,16 @@ pub struct DeviceMesh {
     pub vbos: Vec<u32>,
     pub indices: u32,
     pub material_index: usize,
+}
+
+impl Drop for DeviceMesh {
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteVertexArrays(1, &self.vao);
+            gl::DeleteBuffers(self.vbos.len() as i32, self.vbos.as_ptr());
+            gl::DeleteBuffers(1, &self.indices);
+        };
+    }
 }
 
 #[derive(Clone)]
@@ -134,7 +143,6 @@ impl DeviceMaterial {
     }
 }
 
-#[derive(Clone)]
 pub struct DeviceModel {
     pub meshes: Vec<DeviceMesh>,
     pub materials: Vec<DeviceMaterial>,
@@ -175,26 +183,16 @@ pub fn create_host_mesh(
 
 pub fn create_device_model(host_model: &HostModel) -> DeviceModel {
     let mut materials: Vec<DeviceMaterial> = Vec::new();
-    for host_material in &host_model.materials {
+    for host_material in host_model.materials.iter() {
         materials.push(create_device_material(host_material));
     }
 
     let mut meshes: Vec<DeviceMesh> = Vec::new();
-    for host_mesh in &host_model.meshes {
+    for host_mesh in host_model.meshes.iter() {
         meshes.push(create_device_mesh(host_mesh));
     }
 
     DeviceModel { meshes, materials }
-}
-
-pub fn delete_device_model(device_model: DeviceModel) {
-    for device_material in device_model.materials {
-        delete_device_material(device_material);
-    }
-
-    for device_mesh in device_model.meshes {
-        delete_device_mesh(device_mesh);
-    }
 }
 
 fn create_model_attributes(
@@ -295,12 +293,6 @@ fn create_device_material(material: &HostMaterial) -> DeviceMaterial {
     }
 }
 
-fn delete_device_material(device_material: DeviceMaterial) {
-    for sampler in device_material.properties_samplers {
-        tex::delete_device_texture(&sampler.value.texture);
-    }
-}
-
 fn create_material_texture_sampler(
     name: &str,
     host_texture: &tex::HostTexture,
@@ -337,14 +329,6 @@ fn create_device_mesh(mesh: &HostMesh) -> DeviceMesh {
         .expect("Failed to create index buffer."),
         material_index: mesh.material_index,
     }
-}
-
-fn delete_device_mesh(mesh: DeviceMesh) {
-    unsafe {
-        gl::DeleteVertexArrays(1, &mesh.vao);
-        gl::DeleteBuffers(mesh.vbos.len() as i32, mesh.vbos.as_ptr());
-        gl::DeleteBuffers(1, &mesh.indices);
-    };
 }
 
 fn create_device_mesh_vbos(mesh: &HostMesh) -> Vec<u32> {

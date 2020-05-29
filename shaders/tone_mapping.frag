@@ -1,17 +1,3 @@
-#version 460
-
-layout (binding = 0, location = 30) uniform sampler2D uColorSampler2D;
-layout (location = 0) in vec2 uv;
-layout (location = 0) out vec4 outColor;
-
-// void main()
-// {
-//     vec3 color = texture(uColorSampler2D, uv, 0).rgb;
-//     color = color / (color + vec3(1.0));
-//     color = pow(color, vec3(1.0/2.2));
-//     outColor = vec4(color, 1);
-// }
-
 //=================================================================================================
 //
 //  Baking Lab
@@ -24,6 +10,12 @@ layout (location = 0) out vec4 outColor;
 
 // The code in this file was originally written by Stephen Hill (@self_shadow), who deserves all
 // credit for coming up with this fit and implementing it. Buy him a beer next time you see him. :)
+
+#version 460
+
+layout (binding = 0, location = 30) uniform sampler2D uColorSampler2D;
+layout (location = 0) in vec2 uv;
+layout (location = 0) out vec4 outColor;
 
 vec3 acesFilm(const vec3 x) {
     const float a = 2.51;

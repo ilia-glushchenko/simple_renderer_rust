@@ -1,5 +1,6 @@
 use crate::math;
 use crate::model;
+use std::rc::Rc;
 
 pub fn calculate_tangents_and_bitangents(
     indices: &model::Indices,
@@ -181,7 +182,7 @@ pub fn create_full_screen_triangle_host_mesh() -> model::HostMesh {
 
 pub fn create_full_screen_triangle_model() -> model::DeviceModel {
     model::create_device_model(&model::HostModel {
-        meshes: vec![create_full_screen_triangle_host_mesh()],
-        materials: vec![model::HostMaterial::empty()],
+        meshes: Rc::new(vec![create_full_screen_triangle_host_mesh()]),
+        materials: Rc::new(vec![model::HostMaterial::empty()]),
     })
 }

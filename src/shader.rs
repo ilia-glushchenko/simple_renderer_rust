@@ -49,7 +49,6 @@ pub struct HostShaderProgram {
     pub frag_shader_source: String,
 }
 
-#[derive(Clone)]
 pub struct ShaderProgram {
     pub name: String,
     pub handle: u32,
@@ -62,110 +61,114 @@ pub struct ShaderProgram {
     pub outputs: Vec<ShaderProgramOutput>,
 }
 
-pub fn create_shader_program(
-    host_shader_program_descriptor: &HostShaderProgramDescriptor,
-) -> Result<ShaderProgram, String> {
-    assert!(
-        !host_shader_program_descriptor
-            .vert_shader_file_path
-            .is_empty(),
-        "Host shader program must provide vert file path"
-    );
-    assert!(
-        !host_shader_program_descriptor
-            .frag_shader_file_path
-            .is_empty(),
-        "Host shader program must provide frag file path",
-    );
-
-    let host_shader_program = loader::load_host_shader_program(&host_shader_program_descriptor);
-    if let Result::Err(msg) = host_shader_program {
-        return Result::Err(msg);
+impl Drop for ShaderProgram {
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteShader(self.vert_shader_handle);
+            gl::DeleteShader(self.frag_shader_handle);
+            gl::DeleteProgram(self.handle);
+        }
+        self.attributes.clear();
+        self.scalar_uniforms.clear();
+        self.array_uniforms.clear();
+        self.samplers.clear();
     }
-    let host_shader_program = host_shader_program.unwrap();
-
-    let vert_shader_handle =
-        create_shader(&host_shader_program.vert_shader_source, gl::VERTEX_SHADER);
-    if let Err(msg) = vert_shader_handle {
-        return Result::Err(format!(
-            "Failed to create shader name:'{}':\n{}",
-            host_shader_program_descriptor.vert_shader_file_path, msg
-        ));
-    }
-    let vert_shader_handle = vert_shader_handle.unwrap();
-    let frag_shader_handle =
-        create_shader(&host_shader_program.frag_shader_source, gl::FRAGMENT_SHADER);
-    if let Err(msg) = frag_shader_handle {
-        return Result::Err(format!(
-            "Failed to create shader name: '{}':\n{}",
-            host_shader_program_descriptor.frag_shader_file_path, msg
-        ));
-    }
-    let frag_shader_handle = frag_shader_handle.unwrap();
-    let handle = unsafe { gl::CreateProgram() };
-    if let Err(msg) = link_shader_program(handle, vert_shader_handle, frag_shader_handle) {
-        return Result::Err(format!(
-            "Failed to link shader program name: '{}':\n{}",
-            host_shader_program_descriptor.name, msg
-        ));
-    }
-
-    Result::Ok(ShaderProgram {
-        name: host_shader_program.descriptor.name.clone(),
-        handle,
-        vert_shader_handle,
-        frag_shader_handle,
-        attributes: create_shader_program_attributes(
-            handle,
-            &host_shader_program.vert_shader_source,
-            &host_shader_program.descriptor.vert_shader_file_path,
-        ),
-        scalar_uniforms: create_shader_program_scalar_uniforms(
-            handle,
-            vec![
-                &host_shader_program.vert_shader_source,
-                &host_shader_program.frag_shader_source,
-            ],
-            vec![
-                &host_shader_program.descriptor.vert_shader_file_path,
-                &host_shader_program.descriptor.frag_shader_file_path,
-            ],
-        ),
-        array_uniforms: create_shader_program_array_uniforms(
-            handle,
-            vec![
-                &host_shader_program.vert_shader_source,
-                &host_shader_program.frag_shader_source,
-            ],
-            vec![
-                &host_shader_program.descriptor.vert_shader_file_path,
-                &host_shader_program.descriptor.frag_shader_file_path,
-            ],
-        ),
-        samplers: create_shader_program_texture_samplers(
-            vec![
-                &host_shader_program.vert_shader_source,
-                &host_shader_program.frag_shader_source,
-            ],
-            vec![
-                &host_shader_program.descriptor.vert_shader_file_path,
-                &host_shader_program.descriptor.frag_shader_file_path,
-            ],
-        ),
-        outputs: create_shader_program_outputs(&host_shader_program.frag_shader_source),
-    })
 }
 
-pub fn delete_shader_program(program: &mut ShaderProgram) {
-    unsafe {
-        gl::DeleteShader(program.vert_shader_handle);
-        gl::DeleteShader(program.frag_shader_handle);
-        gl::DeleteProgram(program.handle);
+impl ShaderProgram {
+    pub fn new(
+        host_shader_program_descriptor: &HostShaderProgramDescriptor,
+    ) -> Result<ShaderProgram, String> {
+        assert!(
+            !host_shader_program_descriptor
+                .vert_shader_file_path
+                .is_empty(),
+            "Host shader program must provide vert file path"
+        );
+        assert!(
+            !host_shader_program_descriptor
+                .frag_shader_file_path
+                .is_empty(),
+            "Host shader program must provide frag file path",
+        );
+
+        let host_shader_program = loader::load_host_shader_program(&host_shader_program_descriptor);
+        if let Result::Err(msg) = host_shader_program {
+            return Result::Err(msg);
+        }
+        let host_shader_program = host_shader_program.unwrap();
+
+        let vert_shader_handle =
+            create_shader(&host_shader_program.vert_shader_source, gl::VERTEX_SHADER);
+        if let Err(msg) = vert_shader_handle {
+            return Result::Err(format!(
+                "Failed to create shader name:'{}':\n{}",
+                host_shader_program_descriptor.vert_shader_file_path, msg
+            ));
+        }
+        let vert_shader_handle = vert_shader_handle.unwrap();
+        let frag_shader_handle =
+            create_shader(&host_shader_program.frag_shader_source, gl::FRAGMENT_SHADER);
+        if let Err(msg) = frag_shader_handle {
+            return Result::Err(format!(
+                "Failed to create shader name: '{}':\n{}",
+                host_shader_program_descriptor.frag_shader_file_path, msg
+            ));
+        }
+        let frag_shader_handle = frag_shader_handle.unwrap();
+        let handle = unsafe { gl::CreateProgram() };
+        if let Err(msg) = link_shader_program(handle, vert_shader_handle, frag_shader_handle) {
+            return Result::Err(format!(
+                "Failed to link shader program name: '{}':\n{}",
+                host_shader_program_descriptor.name, msg
+            ));
+        }
+
+        Result::Ok(ShaderProgram {
+            name: host_shader_program.descriptor.name.clone(),
+            handle,
+            vert_shader_handle,
+            frag_shader_handle,
+            attributes: create_shader_program_attributes(
+                handle,
+                &host_shader_program.vert_shader_source,
+                &host_shader_program.descriptor.vert_shader_file_path,
+            ),
+            scalar_uniforms: create_shader_program_scalar_uniforms(
+                handle,
+                vec![
+                    &host_shader_program.vert_shader_source,
+                    &host_shader_program.frag_shader_source,
+                ],
+                vec![
+                    &host_shader_program.descriptor.vert_shader_file_path,
+                    &host_shader_program.descriptor.frag_shader_file_path,
+                ],
+            ),
+            array_uniforms: create_shader_program_array_uniforms(
+                handle,
+                vec![
+                    &host_shader_program.vert_shader_source,
+                    &host_shader_program.frag_shader_source,
+                ],
+                vec![
+                    &host_shader_program.descriptor.vert_shader_file_path,
+                    &host_shader_program.descriptor.frag_shader_file_path,
+                ],
+            ),
+            samplers: create_shader_program_texture_samplers(
+                vec![
+                    &host_shader_program.vert_shader_source,
+                    &host_shader_program.frag_shader_source,
+                ],
+                vec![
+                    &host_shader_program.descriptor.vert_shader_file_path,
+                    &host_shader_program.descriptor.frag_shader_file_path,
+                ],
+            ),
+            outputs: create_shader_program_outputs(&host_shader_program.frag_shader_source),
+        })
     }
-    program.attributes.clear();
-    program.scalar_uniforms.clear();
-    program.array_uniforms.clear();
-    program.samplers.clear();
 }
 
 fn create_shader(shader_source: &str, shader_type: gl::types::GLenum) -> Result<u32, String> {

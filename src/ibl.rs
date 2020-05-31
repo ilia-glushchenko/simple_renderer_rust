@@ -22,7 +22,7 @@ pub fn create_specular_cube_map_texture(
 
     let (fbos, pass) = draw_cubemap(&mut techs, pass, &box_model);
 
-    let desc = tex::create_spherical_hdri_texture_descriptor(&host_texture);
+    let desc = tex::Descriptor::new(tex::DescriptorType::SphericalHdri(&host_texture));
     let cubemap = create_cubemap(&desc, width, height, &fbos);
 
     cleanup_cubemap_fbos(&mut techs, box_model, &pass);
@@ -42,7 +42,7 @@ pub fn create_diffuse_cube_map_texture(
 
     let (fbos, pass) = draw_cubemap(&mut techs, pass, &box_model);
 
-    let desc = tex::create_color_attachment_device_texture_descriptor();
+    let desc = tex::Descriptor::new(tex::DescriptorType::ColorAttachment);
     let cubemap = create_cubemap(&desc, width, height, &fbos);
 
     cleanup_cubemap_fbos(&mut techs, box_model, &pass);
@@ -57,7 +57,7 @@ pub fn create_prefiltered_environment_map(
     let width = 128;
     let height = 128;
 
-    let desc = tex::create_prefiltered_env_map_texture_descriptor();
+    let desc = tex::Descriptor::new(tex::DescriptorType::PrefilteredEnvMap);
     let map = create_empty_cubemap(&desc, width, height);
 
     let (mut techs, mut pass) =
@@ -136,7 +136,7 @@ struct CubeMapFbos {
 }
 
 fn create_cubemap(
-    desc: &tex::DeviceTextureDescriptor,
+    desc: &tex::Descriptor,
     width: u32,
     height: u32,
     fbos: &CubeMapFbos,
@@ -226,11 +226,7 @@ fn create_cubemap(
     })
 }
 
-fn create_empty_cubemap(
-    desc: &tex::DeviceTextureDescriptor,
-    width: u32,
-    height: u32,
-) -> Rc<tex::DeviceTexture> {
+fn create_empty_cubemap(desc: &tex::Descriptor, width: u32, height: u32) -> Rc<tex::DeviceTexture> {
     let mut handle: u32 = 0;
 
     unsafe {
@@ -366,9 +362,9 @@ fn create_hdri_2_cube_map_pass(
         tech::Techniques::IBL,
         techniques::ibl::hdri2cube::create(
             math::perspective_projection_mat4x4(f32::consts::PI / 2.0, 1., 0.98, 1.01),
-            tex::create_device_texture(
+            tex::DeviceTexture::new(
                 &host_texture,
-                &tex::create_spherical_hdri_texture_descriptor(&host_texture),
+                &tex::Descriptor::new(tex::DescriptorType::SphericalHdri(&host_texture)),
             ),
         ),
     );
@@ -383,7 +379,7 @@ fn create_hdri_2_cube_map_pass(
         techniques: vec![tech::Techniques::IBL],
 
         attachments: vec![pass::PassAttachmentDescriptor {
-            texture_desc: tex::create_color_attachment_device_texture_descriptor(),
+            texture_desc: tex::Descriptor::new(tex::DescriptorType::ColorAttachment),
             flavor: pass::PassAttachmentType::Color(math::zero_vec4()),
             source: pass::PassTextureSource::ThisPass,
             textarget: gl::TEXTURE_2D,
@@ -435,7 +431,7 @@ fn create_diffuse_cubemap_convolution_pass(
         techniques: vec![tech::Techniques::IBL],
 
         attachments: vec![pass::PassAttachmentDescriptor {
-            texture_desc: tex::create_color_attachment_device_texture_descriptor(),
+            texture_desc: tex::Descriptor::new(tex::DescriptorType::ColorAttachment),
             flavor: pass::PassAttachmentType::Color(math::zero_vec4()),
             source: pass::PassTextureSource::ThisPass,
             textarget: gl::TEXTURE_2D,
@@ -472,9 +468,6 @@ fn create_brdf_integration_map_pass(
         techniques::ibl::brdf_integration_map::create(),
     );
 
-    let mut texture_desc = tex::create_color_attachment_device_texture_descriptor();
-    texture_desc.use_mipmaps = false;
-
     let pass_desc = pass::PassDescriptor {
         name: "BRDF Integration Map".to_string(),
         program: shader::HostShaderProgramDescriptor {
@@ -485,7 +478,7 @@ fn create_brdf_integration_map_pass(
         techniques: vec![tech::Techniques::IBL],
 
         attachments: vec![pass::PassAttachmentDescriptor {
-            texture_desc: texture_desc,
+            texture_desc: tex::Descriptor::new(tex::DescriptorType::ColorAttachment),
             flavor: pass::PassAttachmentType::Color(math::zero_vec4()),
             source: pass::PassTextureSource::ThisPass,
             textarget: gl::TEXTURE_2D,
@@ -570,7 +563,7 @@ fn create_env_map_attachment_descriptors(
     mip_level: i32,
 ) -> Vec<pass::PassAttachmentDescriptor> {
     vec![pass::PassAttachmentDescriptor {
-        texture_desc: tex::create_color_attachment_device_texture_descriptor(),
+        texture_desc: tex::Descriptor::new(tex::DescriptorType::ColorAttachment),
         flavor: pass::PassAttachmentType::Color(math::zero_vec4()),
         source: pass::PassTextureSource::FreeTexture(cube_map),
         textarget,
@@ -584,7 +577,7 @@ fn create_env_map_attachment_descriptors(
 
 fn create_attachments(width: u32, height: u32) -> Vec<pass::PassAttachment> {
     pass::create_pass_attachments(&vec![pass::PassAttachmentDescriptor {
-        texture_desc: tex::create_color_attachment_device_texture_descriptor(),
+        texture_desc: tex::Descriptor::new(tex::DescriptorType::ColorAttachment),
         flavor: pass::PassAttachmentType::Color(math::zero_vec4()),
         source: pass::PassTextureSource::ThisPass,
         textarget: gl::TEXTURE_2D,

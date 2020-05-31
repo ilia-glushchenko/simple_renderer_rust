@@ -46,6 +46,7 @@ layout (location = 0) in vec2 inUV;
 layout (location = 1) in vec3 normalWorld;
 layout (location = 2) in vec3 positionWorld;
 layout (location = 3) in vec3 cameraPositionWorld;
+layout (location = 4) in mat3 mTBN;
 
 ///////////////////////////////////////////////////////////
 // Output
@@ -57,6 +58,36 @@ layout (location = 0) out vec4 outColor;
 ///////////////////////////////////////////////////////////
 #define M_PI 3.1415926535897932384626433832795
 #define EPSILON 1e-5
+#define DIRECT_LIGHT_COUNT 1
+#define POINT_LIGHT_COUNT 5
+
+vec3 g_directLights[DIRECT_LIGHT_COUNT] = {
+    vec3(0, 1.f, 0)
+};
+vec3 g_directLightColors[DIRECT_LIGHT_COUNT] = {
+    vec3(1.f, 1.f, 1.f)
+};
+float g_directLightRadiance[DIRECT_LIGHT_COUNT] = {
+    1.
+};
+
+vec3 g_pointLights[POINT_LIGHT_COUNT] = {
+    vec3( -50.0f,  50.0f, -20.0f),
+    vec3(  50.0f,  50.0f, -20.0f),
+    vec3( -50.0f, -50.0f, -20.0f),
+    vec3(  50.0f, -50.0f, -20.0f),
+    vec3(    .0f,   0.0f, -20.0f),
+};
+vec3 g_pointLightColors[POINT_LIGHT_COUNT] = {
+    vec3(1.f, 1.f, 1.f),
+    vec3(1.f, 1.f, 1.f),
+    vec3(1.f, 1.f, 1.f),
+    vec3(1.f, 1.f, 1.f),
+    vec3(1.f, 1.f, 1.f)
+};
+float g_pointLightRadiance[POINT_LIGHT_COUNT] = {
+    1000., 1000., 1000., 1000., 1000.
+};
 
 float ClampPunctualLightRadiance(float r, float radiance)
 {
@@ -81,22 +112,23 @@ mat3 CalculateTBNMatrix( vec3 N, vec3 p, vec2 pUV )
     // solve the linear system
     vec3 dp2perp = cross( dp2, N );
     vec3 dp1perp = cross( N, dp1 );
-    vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
-    vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+    vec3 T = normalize(dp2perp * duv1.x + dp1perp * duv2.x);
+    vec3 B = normalize(dp2perp * duv1.y + dp1perp * duv2.y);
 
     // construct a scale-invariant frame
     float invmax = inversesqrt( max( dot(T,T), dot(B,B) ) );
+
     return mat3( T * invmax, B * invmax, N );
 }
 
-struct POMResult {
+struct POM {
     vec2 uv;
     float depth;
 };
 
-POMResult ParallaxOcclusionMapping(vec2 uv, vec3 v)
+POM ParallaxOcclusionMapping(vec2 uv, vec3 v)
 {
-    const float height_scale = 0.1;
+    const float height_scale = 0.01;
     const float minLayers = 8.0;
     const float maxLayers = 32.0;
     const float numLayers = mix(maxLayers, minLayers, abs(dot(vec3(0.0, 0.0, 1.0), v)));
@@ -123,7 +155,7 @@ POMResult ParallaxOcclusionMapping(vec2 uv, vec3 v)
     float weight = afterDepth / (afterDepth - beforeBampMapValue);
     vec2 finalUV = mix(prevUV, currentUV,  weight);
 
-    POMResult result;
+    POM result;
     result.uv = currentUV;
     result.depth = texture(uBumpMapSampler2D, prevUV).r;
 
@@ -332,88 +364,146 @@ vec3 ForstbiteCookTorrance(vec3 n, vec3 l, vec3 v, vec3 h, float alpha, vec3 F0)
     return Fr;
 }
 
-void main()
+vec3 CalculatePointLights(
+    in vec3 albedo,
+    in float metalness,
+    in float roughness,
+    in vec3 F0,
+    in vec3 v,
+    in vec3 n,
+    in mat3 TBN,
+    in vec3 positionTBN
+)
 {
-    mat3 TBN = CalculateTBNMatrix(normalWorld, positionWorld, inUV);
-
-    vec3 pointLightsTBN[] = {
-        TBN * vec3(-50.0f,  50.0f, 50.0f),
-        TBN * vec3( 50.0f,  50.0f, 50.0f),
-        TBN * vec3(-50.0f, -50.0f, 50.0f),
-        TBN * vec3( 50.0f, -50.0f, 50.0f),
-        TBN * vec3(  0.0f,   0.0f, 50.0f),
-    };
-    vec3 pointLightColors[] = {
-        vec3(1.f, 1.f, 1.f),
-        vec3(1.f, 1.f, 1.f),
-        vec3(1.f, 1.f, 1.f),
-        vec3(1.f, 1.f, 1.f),
-        vec3(1.f, 1.f, 1.f)
-    };
-    float pointLightRadiance[] = {
-        1000., 1000., 1000., 1000., 1000.
-    };
-    vec3 positionTBN = TBN * positionWorld;
-    vec3 cameraPositionTBN = TBN * cameraPositionWorld;
-
-    vec3 v = normalize(cameraPositionTBN - positionTBN);
-    // vec2 uv = inUV;
-    POMResult pomResult = ParallaxOcclusionMapping(inUV, v);
-    vec2 uv = clamp(pomResult.uv, 0, 1);
-
-    vec3 albedo = bool(uAlbedoMapAvailableUint)
-        ? texture(uAlbedoMapSampler2D, uv).rgb
-        : uScalarAlbedoVec3f;
-    float metalness = bool(uMetallicAvailableUint)
-        ? texture(uMetallicSampler2D, uv).r
-        : uScalarMetalnessVec1f;
-    float roughness = bool(uRoughnessAvailableUint)
-        ? texture(uRoughnessSampler2D, uv).r
-        : uScalarRoughnessVec1f;
-    roughness = clamp(roughness, 0.04f, 1.f);
-
-    vec3 n = bool(uNormalMapAvailableUint)
-        ? normalize(normalize(texture(uNormalMapSampler2D, uv).rgb) * 2.f - 1.f)
-        : TBN * normalWorld;
-
-    vec3 F0 = vec3(0.04);
-    F0 = mix(F0, albedo, metalness);
-
     vec3 Lo = vec3(0);
-    for (int i = 0; i < 4 ; ++i)
+
+    for (int i = 0; i < POINT_LIGHT_COUNT; ++i)
     {
-        vec3 l = normalize(pointLightsTBN[i] - positionTBN);
+        vec3 pointLightTBN = TBN * g_pointLights[i];
+        vec3 l = normalize(pointLightTBN - positionTBN);
         vec3 h = normalize(l + v);
 
         vec3 kS = FresnelSchlick(max(dot(h, v), 0.0), F0);
         vec3 kD = (1.0 - kS) * (1.0 - metalness);
 
-        vec3 radiance = pointLightColors[i] * ClampPunctualLightRadiance(
-            length(pointLightsTBN[i] - positionTBN), pointLightRadiance[i]);
-
-        float visibility = GetParallaxSelfShadow(inUV, l, pomResult.depth);
+        // float visibility = GetParallaxSelfShadow(inUV, l, pomResult.depth);
+        vec3 radiance = g_pointLightColors[i] * ClampPunctualLightRadiance(
+            length(pointLightTBN - positionTBN), g_pointLightRadiance[i]);
 
         Lo += (
             kD * HammonDiffuse(n, l, v, h, roughness, F0, albedo)
             + ForstbiteCookTorrance(n, l, v, h, roughness * roughness, F0)
-        ) * radiance * max(0, dot(n, l)) * visibility;
+        ) * radiance * max(0, dot(n, l));
     }
 
+    return Lo;
+}
+
+vec3 CalculateDirectLights(
+    in vec3 albedo,
+    in float metalness,
+    in float roughness,
+    in vec3 F0,
+    in vec3 v,
+    in vec3 n,
+    in mat3 TBN
+)
+{
+    vec3 Lo = vec3(0);
+
+    for (int i = 0; i < DIRECT_LIGHT_COUNT; ++i)
+    {
+        vec3 l = normalize(TBN * g_directLights[i]);
+        vec3 h = normalize(l + v);
+
+        vec3 kS = FresnelSchlick(max(dot(h, v), 0.0), F0);
+        vec3 kD = (1.0 - kS) * (1.0 - metalness);
+
+        vec3 radiance = g_directLightColors[i] * g_directLightRadiance[i];
+        // float visibility = GetParallaxSelfShadow(inUV, l, pomResult.depth);
+
+        Lo += (
+            kD * HammonDiffuse(n, l, v, h, roughness, F0, albedo)
+            + ForstbiteCookTorrance(n, l, v, h, roughness * roughness, F0)
+        ) * radiance * max(0, dot(n, l));
+    }
+
+    return Lo;
+}
+
+vec3 CalculateIblLight(
+    in vec3 albedo,
+    in float metalness,
+    in float roughness,
+    in vec3 F0,
+    in vec3 v,
+    in vec3 n
+)
+{
     vec3 kS = FresnelSchlickRoughness(max(dot(n, v), 0.0), F0, roughness);
-    vec3 kD = 1.0 - kS;
-    kD *= 1.0 - metalness;
+    vec3 kD = (1.0 - kS) * (1.0 - metalness);
     vec3 irradiance = texture(uDiffuseSamplerCube, -n).rgb;
     vec3 diffuse = irradiance * albedo;
 
     const float MAX_REFLECTION_LOD = 7.0;
     vec3 worldR = normalize(reflect(cameraPositionWorld - positionWorld, normalWorld));
     vec3 prefilteredColor = textureLod(uEnvMapSamplerCube, worldR, roughness * MAX_REFLECTION_LOD).rgb;
-    vec3 F        = FresnelSchlickRoughness(max(dot(n, v), 0.0), F0, roughness);
+    vec3 F = FresnelSchlickRoughness(max(dot(n, v), 0.0), F0, roughness);
     vec2 envBRDF  = texture(uBrdfLUTSampler2D, vec2(max(dot(n, v), 0.0), roughness)).rg;
     vec3 specular = prefilteredColor * (F * envBRDF.x + envBRDF.y);
 
     vec3 ambient = (kD * diffuse + specular);
-    vec3 color = ambient + Lo;
 
-    outColor = vec4(color, 1);
+    return ambient;
+}
+
+struct PbrData {
+    vec3 albedo;
+    float roughness;
+    float metalness;
+};
+
+PbrData GetPbrData(in vec2 uv)
+{
+    PbrData pbr;
+
+    pbr.albedo = bool(uAlbedoMapAvailableUint)
+        ? texture(uAlbedoMapSampler2D, uv).rgb
+        : uScalarAlbedoVec3f;
+    pbr.metalness = bool(uMetallicAvailableUint)
+        ? texture(uMetallicSampler2D, uv).r
+        : uScalarMetalnessVec1f;
+    pbr.roughness = bool(uRoughnessAvailableUint)
+        ? texture(uRoughnessSampler2D, uv).r
+        : uScalarRoughnessVec1f;
+    pbr.roughness = clamp(pbr.roughness, 0.04f, 1.f);
+
+    return pbr;
+}
+
+void main()
+{
+    mat3 TBN = CalculateTBNMatrix(normalWorld, positionWorld, inUV);
+
+    vec3 positionTBN = TBN * positionWorld;
+    vec3 cameraPositionTBN = TBN * cameraPositionWorld;
+
+    vec3 v = normalize(cameraPositionTBN - positionTBN);
+    POM pom = ParallaxOcclusionMapping(inUV, v);
+    vec2 uv = clamp(pom.uv, 0, 1);
+    vec3 n = bool(uNormalMapAvailableUint)
+        ? normalize(normalize(texture(uNormalMapSampler2D, uv).rgb) * 2.f - 1.f)
+        : TBN * normalWorld;
+
+    PbrData pbr = GetPbrData(uv);
+    vec3 F0 = mix(vec3(0.04), pbr.albedo, pbr.metalness);
+
+    vec3 Lo =
+          CalculatePointLights(pbr.albedo, pbr.metalness, pbr.roughness, F0, v, n, TBN, positionTBN)
+        //+ CalculateDirectLights(pbr.albedo, pbr.metalness, pbr.roughness, F0, v, n, TBN);
+        + CalculateIblLight(pbr.albedo, pbr.metalness, pbr.roughness, F0, v, n);
+
+    outColor = vec4(Lo, 1);
+
+    // outColor = vec4(pbr.albedo, 1);
 }

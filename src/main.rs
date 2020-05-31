@@ -11,7 +11,9 @@ mod ibl;
 mod input;
 mod loader;
 mod log;
+mod material;
 mod math;
+mod mesh;
 mod model;
 mod pass;
 mod pipeline;
@@ -35,6 +37,42 @@ fn create_empty_model() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
 fn load_wall() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
     let mut device_model =
         loader::load_device_model_from_obj(Path::new("data/models/quad/quad.obj"));
+    device_model.materials[0]
+        .set_svec1f("uScalarRoughnessVec1f", math::Vec1f::new(1.))
+        .unwrap();
+    device_model.materials[0]
+        .set_svec1f("uScalarMetalnessVec1f", math::Vec1f::new(0.))
+        .unwrap();
+    device_model.materials[0]
+        .set_svec3f("uScalarAlbedoVec3f", math::Vec3f::new(1., 1., 1.))
+        .unwrap();
+    let trasforms = vec![math::scale_mat4x4(math::Vec3f::new(100., 100., 100.))];
+
+    (device_model, trasforms)
+}
+
+#[allow(dead_code)]
+fn load_well() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
+    let mut device_model =
+        loader::load_device_model_from_obj(Path::new("data/models/well/well.obj"));
+    device_model.materials[0]
+        .set_svec1f("uScalarRoughnessVec1f", math::Vec1f::new(1.))
+        .unwrap();
+    device_model.materials[0]
+        .set_svec1f("uScalarMetalnessVec1f", math::Vec1f::new(0.))
+        .unwrap();
+    device_model.materials[0]
+        .set_svec3f("uScalarAlbedoVec3f", math::Vec3f::new(0., 0., 0.))
+        .unwrap();
+    let trasforms = vec![math::Mat4x4f::identity()];
+
+    (device_model, trasforms)
+}
+
+#[allow(dead_code)]
+fn load_cylinder() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
+    let mut device_model =
+        loader::load_device_model_from_obj(Path::new("data/models/cylinder/cylinder.obj"));
     device_model.materials[0]
         .set_svec1f("uScalarRoughnessVec1f", math::Vec1f::new(0.))
         .unwrap();
@@ -118,7 +156,7 @@ fn load_skybox() -> (
     math::Mat4x4f,
 ) {
     let mut box_model = loader::load_device_model_from_obj(Path::new("data/models/box/box.obj"));
-    box_model.materials = vec![model::DeviceMaterial::empty()];
+    box_model.materials = vec![material::DeviceMaterial::empty()];
     let transform = math::scale_mat4x4(math::Vec3f::new(500., 500., 500.));
 
     let hdr_skybox_texture = ibl::create_specular_cube_map_texture(
@@ -154,6 +192,15 @@ fn load_sponza() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
     (device_model, transforms)
 }
 
+#[allow(dead_code)]
+fn load_bistro_exterior() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
+    let device_model =
+        loader::load_device_model_from_obj(Path::new("data/models/bistro/bistro.obj"));
+    let transforms = vec![math::identity_mat4x4(); device_model.meshes.len()];
+
+    (device_model, transforms)
+}
+
 fn main_loop(window: &mut app::Window) {
     let mut input_data: input::Data = input::Data {
         keys: HashMap::new(),
@@ -168,7 +215,10 @@ fn main_loop(window: &mut app::Window) {
     let (mut box_model, specular_skybox, diffuse_skybox, env_map, skybox_transform) = load_skybox();
     // let (mut device_model_full, transforms) = load_pbr_sphere();
     // let (mut device_model_full, transforms) = load_sponza();
+    // let (mut device_model_full, transforms) = load_bistro_exterior();
     let (mut device_model_full, transforms) = load_wall();
+    // let (mut device_model_full, transforms) = load_cylinder();
+    // let (mut device_model_full, transforms) = load_well();
     let mut camera = camera::create_default_camera(window.width, window.height);
 
     let (mvp_technique, lighting_technique, skybox_technique, tone_mapping) = {

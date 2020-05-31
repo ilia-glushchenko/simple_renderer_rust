@@ -1,7 +1,8 @@
 extern crate gl;
 use crate::log;
+use crate::material;
 use crate::math;
-use crate::model;
+use crate::mesh;
 use crate::pass;
 use crate::pipeline;
 use crate::shader;
@@ -109,7 +110,7 @@ pub struct Technique {
     pub name: String,
     pub per_frame_uniforms: Uniforms,
     pub per_model_uniforms: PerModelUniforms,
-    pub textures: Vec<model::TextureSampler>,
+    pub textures: Vec<material::TextureSampler>,
 }
 
 impl Technique {
@@ -468,7 +469,7 @@ pub fn unbind_shader_program_from_technique(technique: &mut Technique, program_h
 }
 
 pub fn bind_device_mesh_to_shader_program(
-    mesh: &model::DeviceMesh,
+    mesh: &mesh::DeviceMesh,
     program: &shader::ShaderProgram,
 ) {
     assert!(
@@ -504,7 +505,7 @@ pub fn bind_device_mesh_to_shader_program(
 }
 
 pub fn bind_shader_program_to_material(
-    material: &mut model::DeviceMaterial,
+    material: &mut material::DeviceMaterial,
     program: &shader::ShaderProgram,
 ) {
     for sampler in &mut material.properties_samplers {
@@ -534,7 +535,7 @@ pub fn bind_shader_program_to_material(
 }
 
 pub fn unbind_shader_program_from_material(
-    material: &mut model::DeviceMaterial,
+    material: &mut material::DeviceMaterial,
     program_handle: u32,
 ) {
     for sampler in &mut material.properties_samplers {
@@ -565,10 +566,10 @@ pub fn unbind_shader_program_from_material(
 
 pub fn bind_shader_program_to_texture_sampler(
     program: &shader::ShaderProgram,
-    sampler: &mut model::TextureSampler,
+    sampler: &mut material::TextureSampler,
 ) {
     if let Some(program_texture) = program.samplers.iter().find(|x| x.name == sampler.name) {
-        sampler.bindings.push(model::SamplerProgramBinding {
+        sampler.bindings.push(material::SamplerProgramBinding {
             binding: program_texture.binding,
             program: program.handle,
         });
@@ -582,7 +583,7 @@ pub fn bind_shader_program_to_texture_sampler(
 
 pub fn unbind_shader_program_from_texture_sampler(
     program_handle: u32,
-    sampler: &mut model::TextureSampler,
+    sampler: &mut material::TextureSampler,
 ) {
     sampler.bindings.retain(|b| b.program == program_handle);
 }
@@ -692,7 +693,7 @@ fn unbind_scalar_per_model_uniforms_from_shader_program<T>(
 
 fn bind_texture_samplers_to_shader_program(
     program: &shader::ShaderProgram,
-    textures: &mut [model::TextureSampler],
+    textures: &mut [material::TextureSampler],
 ) {
     assert!(
         textures
@@ -708,7 +709,7 @@ fn bind_texture_samplers_to_shader_program(
 
     for texture in textures.iter_mut() {
         if let Some(program_sampler) = program.samplers.iter().find(|x| x.name == texture.name) {
-            texture.bindings.push(model::SamplerProgramBinding {
+            texture.bindings.push(material::SamplerProgramBinding {
                 binding: program_sampler.binding,
                 program: program.handle,
             });
@@ -723,7 +724,7 @@ fn bind_texture_samplers_to_shader_program(
 
 fn unbind_texture_samplers_from_shader_program(
     program_handle: u32,
-    textures: &mut [model::TextureSampler],
+    textures: &mut [material::TextureSampler],
 ) {
     for texture in textures.iter_mut() {
         texture.bindings.retain(|b| b.program != program_handle);

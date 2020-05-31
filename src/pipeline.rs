@@ -23,7 +23,7 @@ impl Pipeline {
             },
             techniques: vec![tech::Techniques::MVP],
             attachments: vec![pass::PassAttachmentDescriptor {
-                texture_desc: tex::create_depth_device_texture_descriptor(),
+                texture_desc: tex::Descriptor::new(tex::DescriptorType::Depth),
                 flavor: pass::PassAttachmentType::Depth(1., gl::LESS),
                 source: pass::PassTextureSource::ThisPass,
                 textarget: gl::TEXTURE_2D,
@@ -53,7 +53,7 @@ impl Pipeline {
             techniques: vec![tech::Techniques::MVP, tech::Techniques::Lighting],
             attachments: vec![
                 pass::PassAttachmentDescriptor {
-                    texture_desc: tex::create_depth_device_texture_descriptor(),
+                    texture_desc: tex::Descriptor::new(tex::DescriptorType::Depth),
                     flavor: pass::PassAttachmentType::Depth(1., gl::EQUAL),
                     source: pass::PassTextureSource::OtherPass(pass::OtherPassTextureSource {
                         pipeline_index: 0,
@@ -68,7 +68,7 @@ impl Pipeline {
                     mip_level: 0,
                 },
                 pass::PassAttachmentDescriptor {
-                    texture_desc: tex::create_color_attachment_device_texture_descriptor(),
+                    texture_desc: tex::Descriptor::new(tex::DescriptorType::ColorAttachment),
                     flavor: pass::PassAttachmentType::Color(clear_color),
                     source: pass::PassTextureSource::ThisPass,
                     textarget: gl::TEXTURE_2D,
@@ -106,7 +106,7 @@ impl Pipeline {
             techniques: vec![tech::Techniques::Skybox],
             attachments: vec![
                 pass::PassAttachmentDescriptor {
-                    texture_desc: tex::create_depth_device_texture_descriptor(),
+                    texture_desc: tex::Descriptor::new(tex::DescriptorType::Depth),
                     flavor: pass::PassAttachmentType::Depth(1., gl::LESS),
                     source: pass::PassTextureSource::OtherPass(pass::OtherPassTextureSource {
                         pipeline_index: 0,
@@ -121,7 +121,7 @@ impl Pipeline {
                     mip_level: 0,
                 },
                 pass::PassAttachmentDescriptor {
-                    texture_desc: tex::create_color_attachment_device_texture_descriptor(),
+                    texture_desc: tex::Descriptor::new(tex::DescriptorType::ColorAttachment),
                     flavor: pass::PassAttachmentType::Color(clear_color),
                     source: pass::PassTextureSource::OtherPass(pass::OtherPassTextureSource {
                         pipeline_index: 1,
@@ -156,7 +156,7 @@ impl Pipeline {
             techniques: vec![tech::Techniques::ToneMapping],
 
             attachments: vec![pass::PassAttachmentDescriptor {
-                texture_desc: tex::create_color_attachment_device_texture_descriptor(),
+                texture_desc: tex::Descriptor::new(tex::DescriptorType::ColorAttachment),
                 flavor: pass::PassAttachmentType::Color(clear_color),
                 source: pass::PassTextureSource::ThisPass,
                 textarget: gl::TEXTURE_2D,

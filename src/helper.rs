@@ -1,14 +1,16 @@
+use crate::material;
 use crate::math;
+use crate::mesh;
 use crate::model;
 use std::rc::Rc;
 
 pub fn calculate_tangents_and_bitangents(
-    indices: &model::Indices,
-    vertices: &model::Vertices,
-    uvs: &model::UVs,
-) -> (model::Tangents, model::Bitangents) {
-    let mut tangents = model::Tangents::new();
-    let mut bitangents = model::Bitangents::new();
+    indices: &mesh::Indices,
+    vertices: &mesh::Vertices,
+    uvs: &mesh::UVs,
+) -> (mesh::Tangents, mesh::Bitangents) {
+    let mut tangents = mesh::Tangents::new();
+    let mut bitangents = mesh::Bitangents::new();
 
     for i in (0..indices.len()).step_by(3) {
         let vert0 = &vertices[indices[i + 0].x as usize];
@@ -60,7 +62,7 @@ pub fn calculate_tangents_and_bitangents(
 }
 
 #[allow(dead_code)]
-pub fn create_host_triangle_model() -> model::HostMesh {
+pub fn create_host_triangle_model() -> mesh::HostMesh {
     let vertices: Vec<math::Vec3f> = vec![
         math::Vec3 {
             x: -1.0f32,
@@ -120,7 +122,7 @@ pub fn create_host_triangle_model() -> model::HostMesh {
     model::create_host_mesh(0, vertices, normals, tangents, bitangents, uvs, indices)
 }
 
-pub fn create_full_screen_triangle_host_mesh() -> model::HostMesh {
+pub fn create_full_screen_triangle_host_mesh() -> mesh::HostMesh {
     let vertices: Vec<math::Vec3f> = vec![
         math::Vec3 {
             x: -1.0f32,
@@ -183,6 +185,6 @@ pub fn create_full_screen_triangle_host_mesh() -> model::HostMesh {
 pub fn create_full_screen_triangle_model() -> model::DeviceModel {
     model::create_device_model(&model::HostModel {
         meshes: Rc::new(vec![create_full_screen_triangle_host_mesh()]),
-        materials: Rc::new(vec![model::HostMaterial::empty()]),
+        materials: Rc::new(vec![material::HostMaterial::empty()]),
     })
 }

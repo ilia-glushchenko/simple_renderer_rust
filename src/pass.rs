@@ -1,6 +1,7 @@
 extern crate gl;
 use crate::app;
 use crate::log;
+use crate::material;
 use crate::math;
 use crate::model;
 use crate::shader;
@@ -115,7 +116,7 @@ pub enum PassTextureSource {
 
 #[derive(Clone)]
 pub struct PassAttachmentDescriptor {
-    pub texture_desc: tex::DeviceTextureDescriptor,
+    pub texture_desc: tex::Descriptor,
     pub flavor: PassAttachmentType,
     pub source: PassTextureSource,
     pub textarget: gl::types::GLenum,
@@ -140,7 +141,7 @@ pub struct PassDependencyDescriptor {
 
 #[derive(Clone)]
 pub struct PassDependency {
-    pub sampler: model::TextureSampler,
+    pub sampler: material::TextureSampler,
     pub desc: PassDependencyDescriptor,
 }
 
@@ -408,7 +409,8 @@ pub fn is_render_pass_valid(
     // Check texture samplers
     {
         for (i, mesh) in device_model.meshes.iter().enumerate() {
-            let textures: Vec<&model::TextureSampler> = device_model.materials[mesh.material_index]
+            let textures: Vec<&material::TextureSampler> = device_model.materials
+                [mesh.material_index]
                 .properties_samplers
                 .iter()
                 .map(|x| &x.value)
@@ -422,7 +424,7 @@ pub fn is_render_pass_valid(
 
                 let material = textures.iter().find(|t| t.name == sampler.name);
 
-                let mut technique_textures: Vec<&model::TextureSampler> = Vec::new();
+                let mut technique_textures: Vec<&material::TextureSampler> = Vec::new();
                 for technique in &pass.techniques {
                     if let Some(texture) = &techniques.map[technique]
                         .textures
@@ -622,28 +624,29 @@ pub fn create_pass_attachments(descriptors: &Vec<PassAttachmentDescriptor>) -> V
         let attachment = match &desc.source {
             PassTextureSource::ThisPass => match &desc.flavor {
                 PassAttachmentType::Color(_) => {
-                    let attachment_host_texture = tex::create_empty_host_texture(
+                    let attachment_host_texture = tex::HostTexture::empty(
                         "color_attachment".to_string(),
                         desc.width as usize,
                         desc.height as usize,
                         tex::convert_gl_format_to_image_depth(desc.texture_desc.format),
                     );
                     let attachment_device_texture =
-                        tex::create_device_texture(&attachment_host_texture, &desc.texture_desc);
+                        tex::DeviceTexture::new(&attachment_host_texture, &desc.texture_desc);
                     PassAttachment {
                         texture: attachment_device_texture,
                         desc: desc.clone(),
                     }
                 }
                 PassAttachmentType::Depth(_, _) => {
-                    let device_texture_descriptor = tex::create_depth_device_texture_descriptor();
-                    let attachment_host_texture = tex::create_empty_host_texture(
+                    let device_texture_descriptor =
+                        tex::Descriptor::new(tex::DescriptorType::Depth);
+                    let attachment_host_texture = tex::HostTexture::empty(
                         "depth attachment".to_string(),
                         desc.width as usize,
                         desc.height as usize,
                         tex::convert_gl_format_to_image_depth(device_texture_descriptor.format),
                     );
-                    let attachment_device_texture = tex::create_device_texture(
+                    let attachment_device_texture = tex::DeviceTexture::new(
                         &attachment_host_texture,
                         &device_texture_descriptor,
                     );
@@ -677,7 +680,7 @@ pub fn create_pass_dependencies(
 
     for desc in descriptors {
         dependencies.push(PassDependency {
-            sampler: model::TextureSampler::new(&desc.name, desc.source.device_texture.clone()),
+            sampler: material::TextureSampler::new(&desc.name, desc.source.device_texture.clone()),
             desc: desc.clone(),
         })
     }
@@ -689,7 +692,7 @@ pub fn create_pass_dependencies(
     dependencies
 }
 
-fn bind_material(program: &shader::ShaderProgram, material: &model::DeviceMaterial) {
+fn bind_material(program: &shader::ShaderProgram, material: &material::DeviceMaterial) {
     for property_sampler in &material.properties_samplers {
         bind_texture(program.handle, &property_sampler.value);
     }
@@ -707,7 +710,7 @@ fn bind_material(program: &shader::ShaderProgram, material: &model::DeviceMateri
     }
 }
 
-fn unbind_material(program: &shader::ShaderProgram, material: &model::DeviceMaterial) {
+fn unbind_material(program: &shader::ShaderProgram, material: &material::DeviceMaterial) {
     for property_sampler in &material.properties_samplers {
         unbind_texture(program.handle, &property_sampler.value);
     }
@@ -725,7 +728,7 @@ fn unbind_dependencies(program: &shader::ShaderProgram, dependencies: &Vec<PassD
     }
 }
 
-fn bind_texture(program: u32, sampler: &model::TextureSampler) {
+fn bind_texture(program: u32, sampler: &material::TextureSampler) {
     if let Some(binding) = sampler.bindings.iter().find(|x| x.program == program) {
         unsafe {
             gl::ActiveTexture(gl::TEXTURE0 as u32 + binding.binding);
@@ -734,7 +737,7 @@ fn bind_texture(program: u32, sampler: &model::TextureSampler) {
     }
 }
 
-fn unbind_texture(program: u32, sampler: &model::TextureSampler) {
+fn unbind_texture(program: u32, sampler: &material::TextureSampler) {
     if let Some(binding) = sampler.bindings.iter().find(|x| x.program == program) {
         unsafe {
             gl::ActiveTexture(gl::TEXTURE0 as u32 + binding.binding);

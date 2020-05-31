@@ -1,175 +1,32 @@
 use crate::buffer;
+use crate::material;
 use crate::math;
-use crate::tech;
-use crate::tex;
+use crate::mesh;
 use std::mem::size_of;
 use std::rc::Rc;
 use std::vec::Vec;
 
-pub type Vertices = Vec<math::Vec3f>;
-pub type Indices = Vec<math::Vec1u>;
-pub type Normals = Vec<math::Vec3f>;
-pub type Tangents = Vec<math::Vec3f>;
-pub type Bitangents = Vec<math::Vec3f>;
-pub type UVs = Vec<math::Vec2f>;
-
-#[derive(Clone)]
-pub struct MeshAttribute {
-    pub name: String,
-    pub dimensions: i32,
-    pub stride: i32,
-    pub data_type: u32,
-}
-
-#[derive(Clone)]
-pub struct HostMesh {
-    pub attributes: Vec<MeshAttribute>,
-    pub material_index: usize,
-    pub vertices: Vertices,
-    pub normals: Normals,
-    pub tangents: Tangents,
-    pub bitangents: Bitangents,
-    pub uvs: UVs,
-    pub indices: Indices,
-}
-
-#[derive(Clone)]
-pub struct MaterialProperty<T> {
-    pub name: String,
-    pub value: T,
-}
-
-#[derive(Clone)]
-pub struct HostMaterial {
-    pub name: String,
-    pub properties_1u: Vec<MaterialProperty<math::Vec1u>>,
-    pub properties_1f: Vec<MaterialProperty<math::Vec1f>>,
-    pub properties_3f: Vec<MaterialProperty<math::Vec3f>>,
-    pub properties_samplers: Vec<MaterialProperty<tex::HostTexture>>,
-}
-
-impl HostMaterial {
-    pub fn empty() -> HostMaterial {
-        HostMaterial {
-            name: "".to_string(),
-            properties_1u: Vec::new(),
-            properties_1f: Vec::new(),
-            properties_3f: Vec::new(),
-            properties_samplers: Vec::new(),
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct HostModel {
-    pub meshes: Rc<Vec<HostMesh>>,
-    pub materials: Rc<Vec<HostMaterial>>,
-}
-
-pub struct DeviceMesh {
-    pub vao: u32,
-    pub index_count: u32,
-    pub attributes: Vec<MeshAttribute>,
-    pub vbos: Vec<u32>,
-    pub indices: u32,
-    pub material_index: usize,
-}
-
-impl Drop for DeviceMesh {
-    fn drop(&mut self) {
-        unsafe {
-            gl::DeleteVertexArrays(1, &self.vao);
-            gl::DeleteBuffers(self.vbos.len() as i32, self.vbos.as_ptr());
-            gl::DeleteBuffers(1, &self.indices);
-        };
-    }
-}
-
-#[derive(Clone)]
-pub struct SamplerProgramBinding {
-    pub binding: u32,
-    pub program: u32,
-}
-
-#[derive(Clone)]
-pub struct TextureSampler {
-    pub name: String,
-    pub bindings: Vec<SamplerProgramBinding>,
-    pub texture: Rc<tex::DeviceTexture>,
-}
-
-impl TextureSampler {
-    pub fn new(name: &str, texture: Rc<tex::DeviceTexture>) -> TextureSampler {
-        TextureSampler {
-            name: name.to_string(),
-            bindings: Vec::new(),
-            texture: texture,
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct DeviceMaterial {
-    pub name: String,
-    pub properties_1u: Vec<MaterialProperty<tech::Uniform<math::Vec1u>>>,
-    pub properties_1f: Vec<MaterialProperty<tech::Uniform<math::Vec1f>>>,
-    pub properties_3f: Vec<MaterialProperty<tech::Uniform<math::Vec3f>>>,
-    pub properties_samplers: Vec<MaterialProperty<TextureSampler>>,
-}
-
-impl DeviceMaterial {
-    pub fn set_svec1f(&mut self, name: &str, value: math::Vec1f) -> Result<(), String> {
-        if let Some(property) = self.properties_1f.iter_mut().find(|x| x.value.name == name) {
-            if property.value.data_location.data.len() == 1 {
-                property.value.data_location.data[0] = value;
-                return Ok(());
-            }
-            return Err(format!("Failed to set array property: '{}'", name).to_string());
-        }
-
-        Err(format!("Failed to find property: '{}'", name).to_string())
-    }
-
-    pub fn set_svec3f(&mut self, name: &str, value: math::Vec3f) -> Result<(), String> {
-        if let Some(property) = self.properties_3f.iter_mut().find(|x| x.value.name == name) {
-            if property.value.data_location.data.len() == 1 {
-                property.value.data_location.data[0] = value;
-                return Ok(());
-            }
-            return Err(format!("Failed to set array property: '{}'", name).to_string());
-        }
-
-        Err(format!("Failed to find property: '{}'", name).to_string())
-    }
+    pub meshes: Rc<Vec<mesh::HostMesh>>,
+    pub materials: Rc<Vec<material::HostMaterial>>,
 }
 
 pub struct DeviceModel {
-    pub meshes: Vec<DeviceMesh>,
-    pub materials: Vec<DeviceMaterial>,
-}
-
-impl DeviceMaterial {
-    pub fn empty() -> DeviceMaterial {
-        DeviceMaterial {
-            name: "".to_string(),
-            properties_1u: Vec::new(),
-            properties_1f: Vec::new(),
-            properties_3f: Vec::new(),
-            properties_samplers: Vec::new(),
-        }
-    }
+    pub meshes: Vec<mesh::DeviceMesh>,
+    pub materials: Vec<material::DeviceMaterial>,
 }
 
 pub fn create_host_mesh(
     material_index: usize,
-    vertices: Vertices,
-    normals: Normals,
-    tangents: Tangents,
-    bitangents: Bitangents,
-    uvs: UVs,
-    indices: Indices,
-) -> HostMesh {
-    HostMesh {
+    vertices: mesh::Vertices,
+    normals: mesh::Normals,
+    tangents: mesh::Tangents,
+    bitangents: mesh::Bitangents,
+    uvs: mesh::UVs,
+    indices: mesh::Indices,
+) -> mesh::HostMesh {
+    mesh::HostMesh {
         attributes: create_model_attributes(&vertices, &normals, &tangents, &bitangents, &uvs),
         material_index,
         vertices,
@@ -182,12 +39,12 @@ pub fn create_host_mesh(
 }
 
 pub fn create_device_model(host_model: &HostModel) -> DeviceModel {
-    let mut materials: Vec<DeviceMaterial> = Vec::new();
+    let mut materials: Vec<material::DeviceMaterial> = Vec::new();
     for host_material in host_model.materials.iter() {
-        materials.push(create_device_material(host_material));
+        materials.push(material::DeviceMaterial::new(host_material));
     }
 
-    let mut meshes: Vec<DeviceMesh> = Vec::new();
+    let mut meshes: Vec<mesh::DeviceMesh> = Vec::new();
     for host_mesh in host_model.meshes.iter() {
         meshes.push(create_device_mesh(host_mesh));
     }
@@ -196,15 +53,15 @@ pub fn create_device_model(host_model: &HostModel) -> DeviceModel {
 }
 
 fn create_model_attributes(
-    vertices: &Vertices,
-    normals: &Normals,
-    tangents: &Tangents,
-    bitangents: &Bitangents,
-    uvs: &UVs,
-) -> Vec<MeshAttribute> {
+    vertices: &mesh::Vertices,
+    normals: &mesh::Normals,
+    tangents: &mesh::Tangents,
+    bitangents: &mesh::Bitangents,
+    uvs: &mesh::UVs,
+) -> Vec<mesh::Attribute> {
     assert!(!vertices.is_empty(), "Model must always have vertices.");
 
-    let mut attributes: Vec<MeshAttribute> = Vec::new();
+    let mut attributes: Vec<mesh::Attribute> = Vec::new();
 
     if !vertices.is_empty() {
         attributes.push(create_model_attribute(&vertices, "aPosition"));
@@ -225,12 +82,12 @@ fn create_model_attributes(
     attributes
 }
 
-fn create_model_attribute<T>(_: &[T], name: &str) -> MeshAttribute
+fn create_model_attribute<T>(_: &[T], name: &str) -> mesh::Attribute
 where
     T: math::VecDimensions<T>,
     T: math::VecGLTypeTrait,
 {
-    MeshAttribute {
+    mesh::Attribute {
         name: name.to_string(),
         dimensions: T::DIMENSIONS as i32,
         stride: size_of::<T>() as i32,
@@ -238,74 +95,7 @@ where
     }
 }
 
-fn create_device_material(material: &HostMaterial) -> DeviceMaterial {
-    let properties_1u = {
-        let mut properties = Vec::<MaterialProperty<tech::Uniform<math::Vec1u>>>::new();
-        for property in &material.properties_1u {
-            properties.push(MaterialProperty {
-                name: property.name.clone(),
-                value: tech::create_new_uniform(&property.name, property.value),
-            })
-        }
-        properties
-    };
-    let properties_1f = {
-        let mut properties = Vec::<MaterialProperty<tech::Uniform<math::Vec1f>>>::new();
-        for property in &material.properties_1f {
-            properties.push(MaterialProperty {
-                name: property.name.clone(),
-                value: tech::create_new_uniform(&property.name, property.value),
-            })
-        }
-        properties
-    };
-    let properties_3f = {
-        let mut properties = Vec::<MaterialProperty<tech::Uniform<math::Vec3f>>>::new();
-        for property in &material.properties_3f {
-            properties.push(MaterialProperty {
-                name: property.name.clone(),
-                value: tech::create_new_uniform(&property.name, property.value),
-            })
-        }
-        properties
-    };
-    let properties_samplers = {
-        let mut properties = Vec::<MaterialProperty<TextureSampler>>::new();
-        for property in &material.properties_samplers {
-            properties.push(MaterialProperty {
-                name: property.name.clone(),
-                value: create_material_texture_sampler(
-                    &property.name,
-                    &property.value,
-                    &tex::create_color_device_texture_descriptor(&property.value),
-                ),
-            })
-        }
-        properties
-    };
-
-    DeviceMaterial {
-        name: material.name.clone(),
-        properties_1u,
-        properties_1f,
-        properties_3f,
-        properties_samplers,
-    }
-}
-
-fn create_material_texture_sampler(
-    name: &str,
-    host_texture: &tex::HostTexture,
-    desc: &tex::DeviceTextureDescriptor,
-) -> TextureSampler {
-    TextureSampler {
-        name: name.to_string(),
-        bindings: Vec::new(),
-        texture: tex::create_device_texture(host_texture, desc),
-    }
-}
-
-fn create_device_mesh(mesh: &HostMesh) -> DeviceMesh {
+fn create_device_mesh(mesh: &mesh::HostMesh) -> mesh::DeviceMesh {
     let mut vao: u32 = 0;
     unsafe {
         gl::GenVertexArrays(1, &mut vao as *mut u32);
@@ -317,7 +107,7 @@ fn create_device_mesh(mesh: &HostMesh) -> DeviceMesh {
         "Index count should be multiple of 3 to render triangles.",
     );
 
-    DeviceMesh {
+    mesh::DeviceMesh {
         vao,
         index_count: mesh.indices.len() as u32 / 3,
         attributes: mesh.attributes.clone(),
@@ -331,7 +121,7 @@ fn create_device_mesh(mesh: &HostMesh) -> DeviceMesh {
     }
 }
 
-fn create_device_mesh_vbos(mesh: &HostMesh) -> Vec<u32> {
+fn create_device_mesh_vbos(mesh: &mesh::HostMesh) -> Vec<u32> {
     let mut vbos: Vec<u32> = Vec::new();
 
     if !mesh.vertices.is_empty() {

@@ -2,7 +2,9 @@ extern crate stb_image;
 extern crate tobj;
 use crate::helper;
 use crate::log;
+use crate::material;
 use crate::math;
+use crate::mesh;
 use crate::model;
 use crate::shader;
 use crate::tex;
@@ -122,7 +124,7 @@ pub fn load_host_model_from_obj(file_path: &Path) -> model::HostModel {
     }
     let (raw_models, raw_materials) = load_result.unwrap();
 
-    let mut materials: Vec<model::HostMaterial> = Vec::new();
+    let mut materials: Vec<material::HostMaterial> = Vec::new();
     for raw_material in &raw_materials {
         if let Some(folder) = file_path.parent() {
             materials.push(create_host_material_from_tobj_material(
@@ -134,7 +136,7 @@ pub fn load_host_model_from_obj(file_path: &Path) -> model::HostModel {
         }
     }
 
-    let mut meshes: Vec<model::HostMesh> = Vec::new();
+    let mut meshes: Vec<mesh::HostMesh> = Vec::new();
     for raw_model in &raw_models {
         meshes.push(create_host_mesh_from_tobj_mesh(raw_model));
     }
@@ -145,7 +147,7 @@ pub fn load_host_model_from_obj(file_path: &Path) -> model::HostModel {
     }
 }
 
-fn create_host_mesh_from_tobj_mesh(raw_model: &tobj::Model) -> model::HostMesh {
+fn create_host_mesh_from_tobj_mesh(raw_model: &tobj::Model) -> mesh::HostMesh {
     assert!(
         !raw_model.mesh.positions.is_empty(),
         "Model must have vertices."
@@ -165,10 +167,10 @@ fn create_host_mesh_from_tobj_mesh(raw_model: &tobj::Model) -> model::HostMesh {
         "Every vertex must have a uv if there are uvs."
     );
 
-    let mut vertices = model::Vertices::new();
-    let mut normals = model::Normals::new();
-    let mut uvs = model::UVs::new();
-    let mut indices = model::Indices::new();
+    let mut vertices = mesh::Vertices::new();
+    let mut normals = mesh::Normals::new();
+    let mut uvs = mesh::UVs::new();
+    let mut indices = mesh::Indices::new();
 
     let mut i = 0;
     while i < raw_model.mesh.positions.len() {
@@ -224,7 +226,7 @@ fn create_host_mesh_from_tobj_mesh(raw_model: &tobj::Model) -> model::HostMesh {
 fn create_host_material_from_tobj_material(
     folder_path: &Path,
     raw_material: &tobj::Material,
-) -> model::HostMaterial {
+) -> material::HostMaterial {
     struct TextureLoadInfo<'a> {
         path: PathBuf,
         text_name: &'a str,
@@ -311,12 +313,12 @@ fn create_host_material_from_tobj_material(
         }
     }
 
-    model::HostMaterial {
+    material::HostMaterial {
         name: raw_material.name.clone(),
 
         properties_1u: states
             .iter()
-            .map(|x| model::MaterialProperty::<math::Vec1u> {
+            .map(|x| material::Property::<math::Vec1u> {
                 name: x.0.clone(),
                 value: math::Vec1u::new(x.1 as u32),
             })
@@ -325,16 +327,16 @@ fn create_host_material_from_tobj_material(
         //ToDo: Those are default values, need to replace them with
         //values from the actual raw materials
         properties_1f: vec![
-            model::MaterialProperty {
+            material::Property {
                 name: "uScalarRoughnessVec1f".to_string(),
-                value: math::Vec1f { x: 1. },
+                value: math::Vec1f { x: 0.5 },
             },
-            model::MaterialProperty {
+            material::Property {
                 name: "uScalarMetalnessVec1f".to_string(),
-                value: math::Vec1f { x: 1. },
+                value: math::Vec1f { x: 0. },
             },
         ],
-        properties_3f: vec![model::MaterialProperty {
+        properties_3f: vec![material::Property {
             name: "uScalarAlbedoVec3f".to_string(),
             value: math::Vec3f {
                 x: 1.,
@@ -345,7 +347,7 @@ fn create_host_material_from_tobj_material(
 
         properties_samplers: textures
             .iter()
-            .map(|x| model::MaterialProperty {
+            .map(|x| material::Property {
                 name: x.name.clone(),
                 value: x.clone(),
             })

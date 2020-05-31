@@ -52,8 +52,8 @@ pub mod mvp {
 
 pub mod lighting {
     use crate::camera;
+    use crate::material;
     use crate::math;
-    use crate::model;
     use crate::tech;
     use crate::tex;
     use std::rc::Rc;
@@ -70,9 +70,9 @@ pub mod lighting {
             vec![camera.pos],
         )];
         technique.textures = vec![
-            model::TextureSampler::new("uDiffuseSamplerCube", diffuse_cubemap),
-            model::TextureSampler::new("uBrdfLUTSampler2D", brdf_lut_texture),
-            model::TextureSampler::new("uEnvMapSamplerCube", env_map_cubemap),
+            material::TextureSampler::new("uDiffuseSamplerCube", diffuse_cubemap),
+            material::TextureSampler::new("uBrdfLUTSampler2D", brdf_lut_texture),
+            material::TextureSampler::new("uEnvMapSamplerCube", env_map_cubemap),
         ];
 
         technique
@@ -94,8 +94,8 @@ pub mod lighting {
 
 pub mod skybox {
     use crate::camera;
+    use crate::material;
     use crate::math;
-    use crate::model;
     use crate::tech::{Technique, Uniform};
     use crate::tex;
     use std::rc::Rc;
@@ -122,7 +122,7 @@ pub mod skybox {
             ),
             Uniform::<math::Mat4x4f>::new("uModelMat4", vec![skybox_model]),
         ];
-        technique.textures = vec![model::TextureSampler::new("uSkyboxSamplerCube", skybox)];
+        technique.textures = vec![material::TextureSampler::new("uSkyboxSamplerCube", skybox)];
 
         technique
     }
@@ -165,8 +165,8 @@ pub mod ibl {
     use crate::tech;
 
     pub mod hdri2cube {
+        use crate::material;
         use crate::math::Mat4x4f;
-        use crate::model;
         use crate::tech::{Technique, Uniform};
         use crate::tex;
         use std::rc::Rc;
@@ -177,15 +177,18 @@ pub mod ibl {
                 Uniform::<Mat4x4f>::new("uProjMat4", vec![proj]),
                 Uniform::<Mat4x4f>::new("uViewMat4", vec![Mat4x4f::identity()]),
             ];
-            technique.textures = vec![model::TextureSampler::new("uHdriSampler2D", hdri_texture)];
+            technique.textures = vec![material::TextureSampler::new(
+                "uHdriSampler2D",
+                hdri_texture,
+            )];
 
             technique
         }
     }
 
     pub mod diffuse_cubemap_convolution {
+        use crate::material;
         use crate::math::Mat4x4f;
-        use crate::model;
         use crate::tech::{Technique, Uniform};
         use crate::tex;
         use std::rc::Rc;
@@ -196,7 +199,7 @@ pub mod ibl {
                 Uniform::<Mat4x4f>::new("uProjMat4", vec![proj]),
                 Uniform::<Mat4x4f>::new("uViewMat4", vec![Mat4x4f::identity()]),
             ];
-            technique.textures = vec![model::TextureSampler::new(
+            technique.textures = vec![material::TextureSampler::new(
                 "uSkyboxSamplerCube",
                 specular_cubemap,
             )];
@@ -214,8 +217,8 @@ pub mod ibl {
     }
 
     pub mod prefiltered_envirnoment_map {
+        use crate::material;
         use crate::math::{Mat4x4f, Vec1f};
-        use crate::model;
         use crate::tech::{Technique, Uniform};
         use crate::tex;
         use std::rc::Rc;
@@ -234,7 +237,7 @@ pub mod ibl {
                 Uniform::<Mat4x4f>::new("uProjMat4", vec![proj]),
                 Uniform::<Mat4x4f>::new("uViewMat4", vec![Mat4x4f::identity()]),
             ];
-            technique.textures = vec![model::TextureSampler::new(
+            technique.textures = vec![material::TextureSampler::new(
                 "uSkyboxSamplerCube",
                 specular_cubemap,
             )];

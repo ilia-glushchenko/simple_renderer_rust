@@ -1,5 +1,4 @@
 use crate::loader;
-use crate::log;
 use std::ffi::CString;
 use std::result::Result;
 use std::string::String;
@@ -132,7 +131,6 @@ impl ShaderProgram {
             attributes: create_shader_program_attributes(
                 handle,
                 &host_shader_program.vert_shader_source,
-                &host_shader_program.descriptor.vert_shader_file_path,
             ),
             scalar_uniforms: create_shader_program_scalar_uniforms(
                 handle,
@@ -262,11 +260,7 @@ fn link_shader_program(
     Result::Ok(())
 }
 
-fn create_shader_program_attributes(
-    program: u32,
-    file: &str,
-    filename: &str,
-) -> Vec<ShaderProgramAttribute> {
+fn create_shader_program_attributes(program: u32, file: &str) -> Vec<ShaderProgramAttribute> {
     let mut attribs: Vec<ShaderProgramAttribute> = Vec::new();
 
     for attribute_name in find_shader_program_inputs(file, ShaderProgramVariableType::In, 0, 10) {
@@ -279,11 +273,6 @@ fn create_shader_program_attributes(
                     location: location as u32,
                     name: attribute_name.to_string(),
                 })
-            } else {
-                log::log_warning(format!(
-                    "Failed to get '{}' attribute location in shader '{}'",
-                    attribute_name, filename
-                ));
             }
         } else {
             panic!("Expected In result");
@@ -320,11 +309,6 @@ fn create_shader_program_scalar_uniforms(
                             location: location as u32,
                             name: uniform_name,
                         })
-                    } else {
-                        log::log_warning(format!(
-                            "Failed to get '{}' uniform location in shader '{}'",
-                            uniform_name, filenames[i]
-                        ));
                     }
                 }
             } else {

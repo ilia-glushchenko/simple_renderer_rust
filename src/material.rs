@@ -1,8 +1,7 @@
 use crate::math;
-use crate::tech;
+use crate::shader;
 use crate::tex;
-
-use std::rc::Rc;
+use crate::uniform;
 use std::vec::Vec;
 
 #[derive(Clone)]
@@ -21,25 +20,12 @@ pub struct HostMaterial {
 }
 
 #[derive(Clone)]
-pub struct SamplerProgramBinding {
-    pub binding: u32,
-    pub program: u32,
-}
-
-#[derive(Clone)]
-pub struct TextureSampler {
-    pub name: String,
-    pub bindings: Vec<SamplerProgramBinding>,
-    pub texture: Rc<tex::DeviceTexture>,
-}
-
-#[derive(Clone)]
 pub struct DeviceMaterial {
     pub name: String,
-    pub properties_1u: Vec<Property<tech::Uniform<math::Vec1u>>>,
-    pub properties_1f: Vec<Property<tech::Uniform<math::Vec1f>>>,
-    pub properties_3f: Vec<Property<tech::Uniform<math::Vec3f>>>,
-    pub properties_samplers: Vec<Property<TextureSampler>>,
+    pub properties_1u: Vec<Property<uniform::Uniform<math::Vec1u>>>,
+    pub properties_1f: Vec<Property<uniform::Uniform<math::Vec1f>>>,
+    pub properties_3f: Vec<Property<uniform::Uniform<math::Vec3f>>>,
+    pub properties_samplers: Vec<Property<uniform::TextureSampler>>,
 }
 
 impl HostMaterial {
@@ -50,16 +36,6 @@ impl HostMaterial {
             properties_1f: Vec::new(),
             properties_3f: Vec::new(),
             properties_samplers: Vec::new(),
-        }
-    }
-}
-
-impl TextureSampler {
-    pub fn new(name: &str, texture: Rc<tex::DeviceTexture>) -> TextureSampler {
-        TextureSampler {
-            name: name.to_string(),
-            bindings: Vec::new(),
-            texture: texture,
         }
     }
 }
@@ -77,41 +53,41 @@ impl DeviceMaterial {
 
     pub fn new(material: &HostMaterial) -> DeviceMaterial {
         let properties_1u = {
-            let mut properties = Vec::<Property<tech::Uniform<math::Vec1u>>>::new();
+            let mut properties = Vec::<Property<uniform::Uniform<math::Vec1u>>>::new();
             for property in &material.properties_1u {
                 properties.push(Property {
                     name: property.name.clone(),
-                    value: tech::create_new_uniform(&property.name, property.value),
+                    value: uniform::Uniform::new(&property.name, vec![property.value]),
                 })
             }
             properties
         };
         let properties_1f = {
-            let mut properties = Vec::<Property<tech::Uniform<math::Vec1f>>>::new();
+            let mut properties = Vec::<Property<uniform::Uniform<math::Vec1f>>>::new();
             for property in &material.properties_1f {
                 properties.push(Property {
                     name: property.name.clone(),
-                    value: tech::create_new_uniform(&property.name, property.value),
+                    value: uniform::Uniform::new(&property.name, vec![property.value]),
                 })
             }
             properties
         };
         let properties_3f = {
-            let mut properties = Vec::<Property<tech::Uniform<math::Vec3f>>>::new();
+            let mut properties = Vec::<Property<uniform::Uniform<math::Vec3f>>>::new();
             for property in &material.properties_3f {
                 properties.push(Property {
                     name: property.name.clone(),
-                    value: tech::create_new_uniform(&property.name, property.value),
+                    value: uniform::Uniform::new(&property.name, vec![property.value]),
                 })
             }
             properties
         };
         let properties_samplers = {
-            let mut properties = Vec::<Property<TextureSampler>>::new();
+            let mut properties = Vec::<Property<uniform::TextureSampler>>::new();
             for property in &material.properties_samplers {
                 properties.push(Property {
                     name: property.name.clone(),
-                    value: TextureSampler::new(
+                    value: uniform::TextureSampler::new(
                         &property.name,
                         tex::DeviceTexture::new(
                             &property.value,
@@ -154,5 +130,59 @@ impl DeviceMaterial {
         }
 
         Err(format!("Failed to find property: '{}'", name).to_string())
+    }
+
+    pub fn bind_shader_program(&mut self, program: &shader::ShaderProgram) {
+        for sampler in &mut self.properties_samplers {
+            sampler.value.bind_shader_program(program);
+        }
+
+        for property_1u in &mut self.properties_1u {
+            uniform::bind_shader_program_to_scalar_uniforms(
+                program,
+                std::slice::from_mut(&mut property_1u.value),
+            );
+        }
+
+        for property_1f in &mut self.properties_1f {
+            uniform::bind_shader_program_to_scalar_uniforms(
+                program,
+                std::slice::from_mut(&mut property_1f.value),
+            );
+        }
+
+        for property_3f in &mut self.properties_3f {
+            uniform::bind_shader_program_to_scalar_uniforms(
+                program,
+                std::slice::from_mut(&mut property_3f.value),
+            );
+        }
+    }
+
+    pub fn unbind_shader_program(&mut self, program_handle: u32) {
+        for sampler in &mut self.properties_samplers {
+            sampler.value.unbind_shader_program(program_handle);
+        }
+
+        for property_1u in &mut self.properties_1u {
+            uniform::unbind_shader_program_from_scalar_uniforms(
+                program_handle,
+                std::slice::from_mut(&mut property_1u.value),
+            );
+        }
+
+        for property_1f in &mut self.properties_1f {
+            uniform::unbind_shader_program_from_scalar_uniforms(
+                program_handle,
+                std::slice::from_mut(&mut property_1f.value),
+            );
+        }
+
+        for property_3f in &mut self.properties_3f {
+            uniform::unbind_shader_program_from_scalar_uniforms(
+                program_handle,
+                std::slice::from_mut(&mut property_3f.value),
+            );
+        }
     }
 }

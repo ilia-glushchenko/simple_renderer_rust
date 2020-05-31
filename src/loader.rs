@@ -58,7 +58,7 @@ pub fn load_host_shader_program(
 
 pub fn load_device_model_from_obj(path: &Path) -> model::DeviceModel {
     let host_model = load_host_model_from_obj(path);
-    let device_model = model::create_device_model(&host_model);
+    let device_model = model::DeviceModel::new(&host_model);
 
     device_model
 }
@@ -209,7 +209,7 @@ fn create_host_mesh_from_tobj_mesh(raw_model: &tobj::Model) -> mesh::HostMesh {
     let (tangents, bitangents) =
         helper::calculate_tangents_and_bitangents(&indices, &vertices, &uvs);
 
-    model::create_host_mesh(
+    mesh::HostMesh::new(
         raw_model.mesh.material_id.expect(&format!(
             "Raw OBJ Model: {} Does not have material index",
             raw_model.name,

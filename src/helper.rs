@@ -1,7 +1,11 @@
+use crate::ibl;
+use crate::loader;
 use crate::material;
 use crate::math;
 use crate::mesh;
 use crate::model;
+use crate::tex;
+use std::path::Path;
 use std::rc::Rc;
 
 pub fn calculate_tangents_and_bitangents(
@@ -119,7 +123,7 @@ pub fn create_host_triangle_model() -> mesh::HostMesh {
 
     let (tangents, bitangents) = calculate_tangents_and_bitangents(&indices, &vertices, &uvs);
 
-    model::create_host_mesh(0, vertices, normals, tangents, bitangents, uvs, indices)
+    mesh::HostMesh::new(0, vertices, normals, tangents, bitangents, uvs, indices)
 }
 
 pub fn create_full_screen_triangle_host_mesh() -> mesh::HostMesh {
@@ -179,12 +183,182 @@ pub fn create_full_screen_triangle_host_mesh() -> mesh::HostMesh {
 
     let (tangents, bitangents) = calculate_tangents_and_bitangents(&indices, &vertices, &uvs);
 
-    model::create_host_mesh(0, vertices, normals, tangents, bitangents, uvs, indices)
+    mesh::HostMesh::new(0, vertices, normals, tangents, bitangents, uvs, indices)
 }
 
 pub fn create_full_screen_triangle_model() -> model::DeviceModel {
-    model::create_device_model(&model::HostModel {
+    model::DeviceModel::new(&model::HostModel {
         meshes: Rc::new(vec![create_full_screen_triangle_host_mesh()]),
         materials: Rc::new(vec![material::HostMaterial::empty()]),
     })
+}
+
+#[allow(dead_code)]
+pub fn load_wall() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
+    let mut device_model =
+        loader::load_device_model_from_obj(Path::new("data/models/quad/quad.obj"));
+    device_model.materials[0]
+        .set_svec1f("uScalarRoughnessVec1f", math::Vec1f::new(1.))
+        .unwrap();
+    device_model.materials[0]
+        .set_svec1f("uScalarMetalnessVec1f", math::Vec1f::new(0.))
+        .unwrap();
+    device_model.materials[0]
+        .set_svec3f("uScalarAlbedoVec3f", math::Vec3f::new(1., 1., 1.))
+        .unwrap();
+    let trasforms = vec![
+        math::scale_mat4x4(math::Vec3f::new(100., 100., 100.)) * math::x_rotation_mat4x4(3.14_f32),
+    ];
+
+    (device_model, trasforms)
+}
+
+#[allow(dead_code)]
+pub fn load_well() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
+    let mut device_model =
+        loader::load_device_model_from_obj(Path::new("data/models/well/well.obj"));
+    device_model.materials[0]
+        .set_svec1f("uScalarRoughnessVec1f", math::Vec1f::new(1.))
+        .unwrap();
+    device_model.materials[0]
+        .set_svec1f("uScalarMetalnessVec1f", math::Vec1f::new(0.))
+        .unwrap();
+    device_model.materials[0]
+        .set_svec3f("uScalarAlbedoVec3f", math::Vec3f::new(0., 0., 0.))
+        .unwrap();
+    let trasforms = vec![math::Mat4x4f::identity()];
+
+    (device_model, trasforms)
+}
+
+#[allow(dead_code)]
+pub fn load_cylinder() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
+    let mut device_model =
+        loader::load_device_model_from_obj(Path::new("data/models/cylinder/cylinder.obj"));
+    device_model.materials[0]
+        .set_svec1f("uScalarRoughnessVec1f", math::Vec1f::new(0.))
+        .unwrap();
+    device_model.materials[0]
+        .set_svec1f("uScalarMetalnessVec1f", math::Vec1f::new(0.))
+        .unwrap();
+    device_model.materials[0]
+        .set_svec3f("uScalarAlbedoVec3f", math::Vec3f::new(0., 0., 0.))
+        .unwrap();
+    let trasforms = vec![
+        math::tranlation_mat4x4(math::Vec3f::new(0., 0., 0.))
+            * math::scale_mat4x4(math::Vec3f::new(100., 100., 100.)),
+    ];
+
+    (device_model, trasforms)
+}
+
+// #[allow(dead_code)]
+// pub fn load_pbr_sphere() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
+//     let mut device_model =
+//         loader::load_device_model_from_obj(Path::new("data/models/pbr-sphere/sphere.obj"));
+
+//     let mesh = device_model.meshes[0].clone();
+//     let mut material = device_model.materials[0].clone();
+//     material
+//         .set_svec3f("uScalarAlbedoVec3f", math::Vec3f::new(1., 1., 1.))
+//         .unwrap();
+//     material.properties_3f[0].value.data_location.data[0] = math::Vec3f::new(1., 1., 1.);
+//     let mut transforms = Vec::new();
+
+//     device_model.meshes.clear();
+//     device_model.materials.clear();
+
+//     for x in (-10..12).step_by(2) {
+//         for y in (-10..12).step_by(2) {
+//             let mut material = material.clone();
+//             let roughness = (x + 10) as f32 / 20.;
+//             let metalness = (y + 10) as f32 / 20.;
+
+//             material
+//                 .set_svec1f("uScalarRoughnessVec1f", math::Vec1f::new(roughness))
+//                 .unwrap();
+//             material
+//                 .set_svec1f("uScalarMetalnessVec1f", math::Vec1f::new(metalness))
+//                 .unwrap();
+//             device_model.materials.push(material);
+
+//             let mut mesh = mesh.clone();
+//             mesh.material_index = device_model.materials.len() - 1;
+//             device_model.meshes.push(mesh.clone());
+
+//             transforms.push(math::tranlation_mat4x4(math::Vec3f {
+//                 x: x as f32,
+//                 y: y as f32,
+//                 z: 0.,
+//             }));
+//         }
+//     }
+
+//     (device_model, transforms)
+// }
+
+#[allow(dead_code)]
+pub fn load_pbr_spheres() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
+    let device_model =
+        loader::load_device_model_from_obj(Path::new("data/models/pbr-spheres/spheres.obj"));
+    let transforms = vec![
+        math::tranlation_mat4x4(math::Vec3f::new(-25., -25., -65.));
+        device_model.meshes.len()
+    ];
+
+    (device_model, transforms)
+}
+
+#[allow(dead_code)]
+pub fn load_skybox() -> (
+    model::DeviceModel,
+    Rc<tex::DeviceTexture>,
+    Rc<tex::DeviceTexture>,
+    Rc<tex::DeviceTexture>,
+    math::Mat4x4f,
+) {
+    let mut box_model = loader::load_device_model_from_obj(Path::new("data/models/box/box.obj"));
+    box_model.materials = vec![material::DeviceMaterial::empty()];
+    let transform = math::scale_mat4x4(math::Vec3f::new(500., 500., 500.));
+
+    let hdr_skybox_texture = ibl::create_specular_cube_map_texture(
+        &loader::load_host_texture_from_file(
+            &Path::new("data/materials/hdri/quattro_canti/quattro_canti_8k.hdr"),
+            "uHdriSampler2D",
+        )
+        .unwrap(),
+        &mut box_model,
+    );
+
+    let hdr_diffuse_skybox =
+        ibl::create_diffuse_cube_map_texture(hdr_skybox_texture.clone(), &mut box_model);
+
+    let prefiltered_env_map =
+        ibl::create_prefiltered_environment_map(hdr_skybox_texture.clone(), &mut box_model);
+
+    (
+        box_model,
+        hdr_skybox_texture,
+        hdr_diffuse_skybox,
+        prefiltered_env_map,
+        transform,
+    )
+}
+
+#[allow(dead_code)]
+pub fn load_sponza() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
+    let device_model =
+        loader::load_device_model_from_obj(Path::new("data/models/Sponza/sponza.obj"));
+    let transforms = vec![math::identity_mat4x4(); device_model.meshes.len()];
+
+    (device_model, transforms)
+}
+
+#[allow(dead_code)]
+pub fn load_bistro_exterior() -> (model::DeviceModel, Vec<math::Mat4x4f>) {
+    let device_model =
+        loader::load_device_model_from_obj(Path::new("data/models/bistro/bistro.obj"));
+    let transforms = vec![math::identity_mat4x4(); device_model.meshes.len()];
+
+    (device_model, transforms)
 }

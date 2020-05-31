@@ -7,6 +7,7 @@ use crate::model;
 use crate::shader;
 use crate::tech;
 use crate::tex;
+use crate::uniform;
 use std::collections::HashMap;
 use std::ptr::null;
 use std::rc::Rc;
@@ -141,7 +142,7 @@ pub struct PassDependencyDescriptor {
 
 #[derive(Clone)]
 pub struct PassDependency {
-    pub sampler: material::TextureSampler,
+    pub sampler: uniform::TextureSampler,
     pub desc: PassDependencyDescriptor,
 }
 
@@ -210,24 +211,6 @@ impl Pass {
         self.fbo = framebuffer_object.unwrap();
 
         Ok(())
-    }
-}
-
-pub fn bind_device_model_to_render_pass(device_model: &mut model::DeviceModel, pass: &Pass) {
-    for device_mesh in &mut device_model.meshes {
-        tech::bind_device_mesh_to_shader_program(device_mesh, &pass.program);
-    }
-    for device_material in &mut device_model.materials {
-        tech::bind_shader_program_to_material(device_material, &pass.program);
-    }
-}
-
-pub fn unbind_device_model_from_render_pass(
-    device_model: &mut model::DeviceModel,
-    pass_program_handle: u32,
-) {
-    for device_material in &mut device_model.materials {
-        tech::unbind_shader_program_from_material(device_material, pass_program_handle);
     }
 }
 
@@ -409,7 +392,7 @@ pub fn is_render_pass_valid(
     // Check texture samplers
     {
         for (i, mesh) in device_model.meshes.iter().enumerate() {
-            let textures: Vec<&material::TextureSampler> = device_model.materials
+            let textures: Vec<&uniform::TextureSampler> = device_model.materials
                 [mesh.material_index]
                 .properties_samplers
                 .iter()
@@ -424,7 +407,7 @@ pub fn is_render_pass_valid(
 
                 let material = textures.iter().find(|t| t.name == sampler.name);
 
-                let mut technique_textures: Vec<&material::TextureSampler> = Vec::new();
+                let mut technique_textures: Vec<&uniform::TextureSampler> = Vec::new();
                 for technique in &pass.techniques {
                     if let Some(texture) = &techniques.map[technique]
                         .textures
@@ -534,7 +517,7 @@ pub fn execute_render_pass(
     for technique_name in &pass.techniques {
         let technique = &techniques.map.get(&technique_name).unwrap();
 
-        tech::update_per_frame_uniforms(&pass.program, &technique.per_frame_uniforms);
+        uniform::update_per_frame_uniforms(&pass.program, &technique.per_frame_uniforms);
         for texture in &technique.textures {
             bind_texture(pass.program.handle, texture);
         }
@@ -552,7 +535,7 @@ pub fn execute_render_pass(
         bind_dependencies(&pass.program, &pass.dependencies);
 
         for technique in &pass.techniques {
-            tech::update_per_model_uniform(
+            uniform::update_per_model_uniform(
                 &pass.program,
                 &techniques.map.get(&technique).unwrap().per_model_uniforms,
                 i,
@@ -680,13 +663,13 @@ pub fn create_pass_dependencies(
 
     for desc in descriptors {
         dependencies.push(PassDependency {
-            sampler: material::TextureSampler::new(&desc.name, desc.source.device_texture.clone()),
+            sampler: uniform::TextureSampler::new(&desc.name, desc.source.device_texture.clone()),
             desc: desc.clone(),
         })
     }
 
     for dependency in &mut dependencies {
-        tech::bind_shader_program_to_texture_sampler(&program, &mut dependency.sampler);
+        dependency.sampler.bind_shader_program(&program);
     }
 
     dependencies
@@ -698,15 +681,15 @@ fn bind_material(program: &shader::ShaderProgram, material: &material::DeviceMat
     }
 
     for property_1u in &material.properties_1u {
-        tech::update_per_frame_uniforms_vec1u(program, std::slice::from_ref(&property_1u.value));
+        uniform::update_per_frame_uniforms_vec1u(program, std::slice::from_ref(&property_1u.value));
     }
 
     for property_1f in &material.properties_1f {
-        tech::update_per_frame_uniforms_vec1f(program, std::slice::from_ref(&property_1f.value));
+        uniform::update_per_frame_uniforms_vec1f(program, std::slice::from_ref(&property_1f.value));
     }
 
     for property_3f in &material.properties_3f {
-        tech::update_per_frame_uniforms_vec3f(program, std::slice::from_ref(&property_3f.value));
+        uniform::update_per_frame_uniforms_vec3f(program, std::slice::from_ref(&property_3f.value));
     }
 }
 
@@ -728,7 +711,7 @@ fn unbind_dependencies(program: &shader::ShaderProgram, dependencies: &Vec<PassD
     }
 }
 
-fn bind_texture(program: u32, sampler: &material::TextureSampler) {
+fn bind_texture(program: u32, sampler: &uniform::TextureSampler) {
     if let Some(binding) = sampler.bindings.iter().find(|x| x.program == program) {
         unsafe {
             gl::ActiveTexture(gl::TEXTURE0 as u32 + binding.binding);
@@ -737,7 +720,7 @@ fn bind_texture(program: u32, sampler: &material::TextureSampler) {
     }
 }
 
-fn unbind_texture(program: u32, sampler: &material::TextureSampler) {
+fn unbind_texture(program: u32, sampler: &uniform::TextureSampler) {
     if let Some(binding) = sampler.bindings.iter().find(|x| x.program == program) {
         unsafe {
             gl::ActiveTexture(gl::TEXTURE0 as u32 + binding.binding);

@@ -2,22 +2,23 @@ pub mod mvp {
     use crate::camera;
     use crate::math;
     use crate::tech;
+    use crate::uniform::{PerModelUnifrom, Uniform};
 
     pub fn create(cam: &camera::Camera, transforms: &Vec<math::Mat4x4f>) -> tech::Technique {
         let mut technique = tech::Technique::new("MVP");
         technique.per_frame_uniforms.mat4x4f = vec![
-            tech::Uniform::<math::Mat4x4f>::new(
+            Uniform::<math::Mat4x4f>::new(
                 "uProjMat4",
                 vec![math::perspective_projection_mat4x4(
                     cam.fov, cam.aspect, cam.near, cam.far,
                 )],
             ),
-            tech::Uniform::<math::Mat4x4f>::new(
+            Uniform::<math::Mat4x4f>::new(
                 "uViewMat4",
                 vec![math::tranlation_mat4x4(math::Vec3f::new(0., 0., -1.))],
             ),
         ];
-        technique.per_model_uniforms.mat4x4f = vec![tech::PerModelUnifrom::<math::Mat4x4f>::new(
+        technique.per_model_uniforms.mat4x4f = vec![PerModelUnifrom::<math::Mat4x4f>::new(
             "uModelMat4",
             transforms.iter().map(|&x| vec![x]).collect(),
         )];
@@ -52,10 +53,10 @@ pub mod mvp {
 
 pub mod lighting {
     use crate::camera;
-    use crate::material;
     use crate::math;
     use crate::tech;
     use crate::tex;
+    use crate::uniform::{TextureSampler, Uniform};
     use std::rc::Rc;
 
     pub fn create(
@@ -65,14 +66,14 @@ pub mod lighting {
         camera: &camera::Camera,
     ) -> tech::Technique {
         let mut technique = tech::Technique::new("Lighting");
-        technique.per_frame_uniforms.vec3f = vec![tech::Uniform::<math::Vec3f>::new(
+        technique.per_frame_uniforms.vec3f = vec![Uniform::<math::Vec3f>::new(
             "uCameraPosVec3",
             vec![camera.pos],
         )];
         technique.textures = vec![
-            material::TextureSampler::new("uDiffuseSamplerCube", diffuse_cubemap),
-            material::TextureSampler::new("uBrdfLUTSampler2D", brdf_lut_texture),
-            material::TextureSampler::new("uEnvMapSamplerCube", env_map_cubemap),
+            TextureSampler::new("uDiffuseSamplerCube", diffuse_cubemap),
+            TextureSampler::new("uBrdfLUTSampler2D", brdf_lut_texture),
+            TextureSampler::new("uEnvMapSamplerCube", env_map_cubemap),
         ];
 
         technique
@@ -94,10 +95,10 @@ pub mod lighting {
 
 pub mod skybox {
     use crate::camera;
-    use crate::material;
     use crate::math;
-    use crate::tech::{Technique, Uniform};
+    use crate::tech::Technique;
     use crate::tex;
+    use crate::uniform::{TextureSampler, Uniform};
     use std::rc::Rc;
 
     pub fn create(
@@ -122,7 +123,7 @@ pub mod skybox {
             ),
             Uniform::<math::Mat4x4f>::new("uModelMat4", vec![skybox_model]),
         ];
-        technique.textures = vec![material::TextureSampler::new("uSkyboxSamplerCube", skybox)];
+        technique.textures = vec![TextureSampler::new("uSkyboxSamplerCube", skybox)];
 
         technique
     }
@@ -165,10 +166,10 @@ pub mod ibl {
     use crate::tech;
 
     pub mod hdri2cube {
-        use crate::material;
         use crate::math::Mat4x4f;
-        use crate::tech::{Technique, Uniform};
+        use crate::tech::Technique;
         use crate::tex;
+        use crate::uniform::{TextureSampler, Uniform};
         use std::rc::Rc;
 
         pub fn create(proj: Mat4x4f, hdri_texture: Rc<tex::DeviceTexture>) -> Technique {
@@ -177,20 +178,17 @@ pub mod ibl {
                 Uniform::<Mat4x4f>::new("uProjMat4", vec![proj]),
                 Uniform::<Mat4x4f>::new("uViewMat4", vec![Mat4x4f::identity()]),
             ];
-            technique.textures = vec![material::TextureSampler::new(
-                "uHdriSampler2D",
-                hdri_texture,
-            )];
+            technique.textures = vec![TextureSampler::new("uHdriSampler2D", hdri_texture)];
 
             technique
         }
     }
 
     pub mod diffuse_cubemap_convolution {
-        use crate::material;
         use crate::math::Mat4x4f;
-        use crate::tech::{Technique, Uniform};
+        use crate::tech::Technique;
         use crate::tex;
+        use crate::uniform::{TextureSampler, Uniform};
         use std::rc::Rc;
 
         pub fn create(proj: Mat4x4f, specular_cubemap: Rc<tex::DeviceTexture>) -> Technique {
@@ -199,10 +197,7 @@ pub mod ibl {
                 Uniform::<Mat4x4f>::new("uProjMat4", vec![proj]),
                 Uniform::<Mat4x4f>::new("uViewMat4", vec![Mat4x4f::identity()]),
             ];
-            technique.textures = vec![material::TextureSampler::new(
-                "uSkyboxSamplerCube",
-                specular_cubemap,
-            )];
+            technique.textures = vec![TextureSampler::new("uSkyboxSamplerCube", specular_cubemap)];
 
             technique
         }
@@ -217,10 +212,10 @@ pub mod ibl {
     }
 
     pub mod prefiltered_envirnoment_map {
-        use crate::material;
         use crate::math::{Mat4x4f, Vec1f};
-        use crate::tech::{Technique, Uniform};
+        use crate::tech::Technique;
         use crate::tex;
+        use crate::uniform::{TextureSampler, Uniform};
         use std::rc::Rc;
 
         pub fn create(
@@ -237,10 +232,7 @@ pub mod ibl {
                 Uniform::<Mat4x4f>::new("uProjMat4", vec![proj]),
                 Uniform::<Mat4x4f>::new("uViewMat4", vec![Mat4x4f::identity()]),
             ];
-            technique.textures = vec![material::TextureSampler::new(
-                "uSkyboxSamplerCube",
-                specular_cubemap,
-            )];
+            technique.textures = vec![TextureSampler::new("uSkyboxSamplerCube", specular_cubemap)];
 
             technique
         }

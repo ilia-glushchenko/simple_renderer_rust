@@ -224,16 +224,15 @@ pub fn reload_render_pipeline(pipeline: &mut Pipeline) -> Result<(), String> {
     for pass in pipeline.passes.iter_mut().rev() {
         //Delete old if success
         for dependency in &mut pass.dependencies {
-            tech::unbind_shader_program_from_texture_sampler(
-                pass.program.handle,
-                &mut dependency.sampler,
-            );
+            dependency
+                .sampler
+                .unbind_shader_program(pass.program.handle);
         }
 
         //Assign new
         pass.program = new_pipeline_programs.pop().unwrap();
         for dependency in &mut pass.dependencies {
-            tech::bind_shader_program_to_texture_sampler(&pass.program, &mut dependency.sampler);
+            dependency.sampler.bind_shader_program(&pass.program);
         }
     }
 

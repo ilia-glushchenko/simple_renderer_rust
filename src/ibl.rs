@@ -116,7 +116,7 @@ pub fn create_brdf_lut() -> Rc<tex::DeviceTexture> {
     pass.fbo.attachments.clear();
 
     pass::unbind_techniques_from_render_pass(&mut techs, pass.program.handle);
-    pass::unbind_device_model_from_render_pass(&mut model, pass.program.handle);
+    model.unbind_pass(pass.program.handle);
     pass::unbind_techniques_from_render_pass(&mut techs, pass.program.handle);
 
     result
@@ -281,7 +281,7 @@ fn cleanup_cubemap_fbos(
     pass: &pass::Pass,
 ) {
     pass::unbind_techniques_from_render_pass(techs, pass.program.handle);
-    pass::unbind_device_model_from_render_pass(box_model, pass.program.handle);
+    box_model.unbind_pass(pass.program.handle);
     pass::unbind_techniques_from_render_pass(techs, pass.program.handle);
 }
 
@@ -398,7 +398,7 @@ fn create_hdri_2_cube_map_pass(
     let pass = pass::Pass::new(pass_desc).expect("Failed to create HDRI render pass.");
 
     pass::bind_techniques_to_render_pass(&mut techs, &pass);
-    pass::bind_device_model_to_render_pass(box_model, &pass);
+    box_model.bind_pass(&pass);
     if let Err(msg) = pass::is_render_pass_valid(&pass, &techs, &box_model) {
         panic!(msg);
     }
@@ -450,7 +450,7 @@ fn create_diffuse_cubemap_convolution_pass(
     let pass = pass::Pass::new(pass_desc).expect("Failed to create HDRI render pass.");
 
     pass::bind_techniques_to_render_pass(&mut techs, &pass);
-    pass::bind_device_model_to_render_pass(box_model, &pass);
+    box_model.bind_pass(&pass);
     if let Err(msg) = pass::is_render_pass_valid(&pass, &techs, &box_model) {
         panic!(msg);
     }
@@ -497,7 +497,7 @@ fn create_brdf_integration_map_pass(
     let pass = pass::Pass::new(pass_desc).expect("Failed to create BRDF integration pass.");
     let mut fullscreen_model = helper::create_full_screen_triangle_model();
     pass::bind_techniques_to_render_pass(&mut techs, &pass);
-    pass::bind_device_model_to_render_pass(&mut fullscreen_model, &pass);
+    fullscreen_model.bind_pass(&pass);
     if let Err(msg) = pass::is_render_pass_valid(&pass, &techs, &fullscreen_model) {
         panic!(msg);
     }
@@ -547,7 +547,7 @@ fn create_prefiltered_environment_map_pass(
     let pass = pass::Pass::new(pass_desc).expect("Failed to create HDRI render pass.");
 
     pass::bind_techniques_to_render_pass(&mut techs, &pass);
-    pass::bind_device_model_to_render_pass(box_model, &pass);
+    box_model.bind_pass(&pass);
     if let Err(msg) = pass::is_render_pass_valid(&pass, &techs, &box_model) {
         panic!(msg);
     }

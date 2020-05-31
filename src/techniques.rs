@@ -1,8 +1,7 @@
 pub mod mvp {
-    use crate::camera;
+    use crate::core::{camera, tech};
+    use crate::gl::uniform::{PerModelUnifrom, Uniform};
     use crate::math;
-    use crate::tech;
-    use crate::uniform::{PerModelUnifrom, Uniform};
 
     pub fn create(cam: &camera::Camera, transforms: &Vec<math::Mat4x4f>) -> tech::Technique {
         let mut technique = tech::Technique::new("MVP");
@@ -52,11 +51,10 @@ pub mod mvp {
 }
 
 pub mod lighting {
-    use crate::camera;
+    use crate::core::{camera, tech};
+    use crate::gl::tex;
+    use crate::gl::uniform::{TextureSampler, Uniform};
     use crate::math;
-    use crate::tech;
-    use crate::tex;
-    use crate::uniform::{TextureSampler, Uniform};
     use std::rc::Rc;
 
     pub fn create(
@@ -94,11 +92,10 @@ pub mod lighting {
 }
 
 pub mod skybox {
-    use crate::camera;
+    use crate::core::{camera, tech::Technique};
+    use crate::gl::tex;
+    use crate::gl::uniform::{TextureSampler, Uniform};
     use crate::math;
-    use crate::tech::Technique;
-    use crate::tex;
-    use crate::uniform::{TextureSampler, Uniform};
     use std::rc::Rc;
 
     pub fn create(
@@ -154,7 +151,7 @@ pub mod skybox {
 }
 
 pub mod tone_mapping {
-    use crate::tech;
+    use crate::core::tech;
 
     pub fn create() -> tech::Technique {
         tech::Technique::new("Tone Mapping")
@@ -162,14 +159,14 @@ pub mod tone_mapping {
 }
 
 pub mod ibl {
+    use crate::core::tech;
     use crate::math;
-    use crate::tech;
 
     pub mod hdri2cube {
+        use crate::core::tech::Technique;
+        use crate::gl::tex;
+        use crate::gl::uniform::{TextureSampler, Uniform};
         use crate::math::Mat4x4f;
-        use crate::tech::Technique;
-        use crate::tex;
-        use crate::uniform::{TextureSampler, Uniform};
         use std::rc::Rc;
 
         pub fn create(proj: Mat4x4f, hdri_texture: Rc<tex::DeviceTexture>) -> Technique {
@@ -185,10 +182,10 @@ pub mod ibl {
     }
 
     pub mod diffuse_cubemap_convolution {
+        use crate::core::tech::Technique;
+        use crate::gl::tex;
+        use crate::gl::uniform::{TextureSampler, Uniform};
         use crate::math::Mat4x4f;
-        use crate::tech::Technique;
-        use crate::tex;
-        use crate::uniform::{TextureSampler, Uniform};
         use std::rc::Rc;
 
         pub fn create(proj: Mat4x4f, specular_cubemap: Rc<tex::DeviceTexture>) -> Technique {
@@ -204,7 +201,7 @@ pub mod ibl {
     }
 
     pub mod brdf_integration_map {
-        use crate::tech;
+        use crate::core::tech;
 
         pub fn create() -> tech::Technique {
             tech::Technique::new("BRDF Integration Map")
@@ -212,10 +209,10 @@ pub mod ibl {
     }
 
     pub mod prefiltered_envirnoment_map {
+        use crate::core::tech::Technique;
+        use crate::gl::tex;
+        use crate::gl::uniform::{TextureSampler, Uniform};
         use crate::math::{Mat4x4f, Vec1f};
-        use crate::tech::Technique;
-        use crate::tex;
-        use crate::uniform::{TextureSampler, Uniform};
         use std::rc::Rc;
 
         pub fn create(

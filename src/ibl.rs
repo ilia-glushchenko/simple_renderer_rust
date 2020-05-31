@@ -1,11 +1,9 @@
-use crate::helper;
+use crate::core::{pass, tech};
+use crate::gl::{shader, tex};
+use crate::helpers::helper;
 use crate::math;
-use crate::model;
-use crate::pass;
-use crate::shader;
-use crate::tech;
+use crate::model::model;
 use crate::techniques;
-use crate::tex;
 use std::f32;
 use std::ffi::c_void;
 use std::ptr::null;

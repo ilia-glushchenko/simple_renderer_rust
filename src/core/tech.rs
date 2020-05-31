@@ -1,8 +1,6 @@
 extern crate gl;
-use crate::pass;
-use crate::pipeline;
-use crate::shader;
-use crate::uniform;
+use crate::core::{pass, pipeline};
+use crate::gl::{shader, uniform};
 use std::collections::HashMap;
 use std::vec::Vec;
 

@@ -1,6 +1,5 @@
-use crate::buffer;
+use crate::gl::{buffer, shader};
 use crate::math;
-use crate::shader;
 use std::mem::size_of;
 use std::ptr::null;
 

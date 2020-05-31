@@ -1,17 +1,14 @@
-use crate::app;
+use crate::core::{app, pass, tech};
+use crate::gl::{shader, tex};
 use crate::math;
-use crate::model;
-use crate::pass;
-use crate::shader;
-use crate::tech;
-use crate::tex;
+use crate::model::model;
 
 pub struct Pipeline {
     pub passes: Vec<pass::Pass>,
 }
 
 impl Pipeline {
-    pub fn new(window: &app::Window) -> Result<Pipeline, String> {
+    pub fn new(app: &app::App) -> Result<Pipeline, String> {
         let clear_color = math::zero_vec4::<f32>();
 
         let depth_pre_pass_descriptor = pass::PassDescriptor {
@@ -29,13 +26,13 @@ impl Pipeline {
                 textarget: gl::TEXTURE_2D,
                 clear: true,
                 write: true,
-                width: window.width,
-                height: window.height,
+                width: app.width,
+                height: app.height,
                 mip_level: 0,
             }],
             dependencies: Vec::new(),
-            width: window.width,
-            height: window.height,
+            width: app.width,
+            height: app.height,
         };
         let depth_pre_pass = pass::Pass::new(depth_pre_pass_descriptor);
         if let Err(msg) = depth_pre_pass {
@@ -63,8 +60,8 @@ impl Pipeline {
                     textarget: gl::TEXTURE_2D,
                     clear: false,
                     write: false,
-                    width: window.width,
-                    height: window.height,
+                    width: app.width,
+                    height: app.height,
                     mip_level: 0,
                 },
                 pass::PassAttachmentDescriptor {
@@ -74,8 +71,8 @@ impl Pipeline {
                     textarget: gl::TEXTURE_2D,
                     clear: true,
                     write: true,
-                    width: window.width,
-                    height: window.height,
+                    width: app.width,
+                    height: app.height,
                     mip_level: 0,
                 },
             ],
@@ -87,8 +84,8 @@ impl Pipeline {
                     device_texture: depth_pre_pass.fbo.attachments[0].texture.clone(),
                 },
             }],
-            width: window.width,
-            height: window.height,
+            width: app.width,
+            height: app.height,
         };
         let lighting_pass = pass::Pass::new(lighting_pass_descriptor);
         if let Err(msg) = lighting_pass {
@@ -116,8 +113,8 @@ impl Pipeline {
                     textarget: gl::TEXTURE_2D,
                     clear: false,
                     write: false,
-                    width: window.width,
-                    height: window.height,
+                    width: app.width,
+                    height: app.height,
                     mip_level: 0,
                 },
                 pass::PassAttachmentDescriptor {
@@ -131,14 +128,14 @@ impl Pipeline {
                     textarget: gl::TEXTURE_2D,
                     clear: false,
                     write: true,
-                    width: window.width,
-                    height: window.height,
+                    width: app.width,
+                    height: app.height,
                     mip_level: 0,
                 },
             ],
             dependencies: Vec::new(),
-            width: window.width,
-            height: window.height,
+            width: app.width,
+            height: app.height,
         };
         let skybox_pass = pass::Pass::new(skybox_pass_descriptor);
         if let Err(msg) = skybox_pass {
@@ -162,8 +159,8 @@ impl Pipeline {
                 textarget: gl::TEXTURE_2D,
                 clear: true,
                 write: true,
-                width: window.width,
-                height: window.height,
+                width: app.width,
+                height: app.height,
                 mip_level: 0,
             }],
             dependencies: vec![pass::PassDependencyDescriptor {
@@ -175,8 +172,8 @@ impl Pipeline {
                 },
             }],
 
-            width: window.width,
-            height: window.height,
+            width: app.width,
+            height: app.height,
         };
         let tone_mapping_pass = pass::Pass::new(tone_mapping_pass_descriptor);
         if let Err(msg) = tone_mapping_pass {
@@ -239,7 +236,7 @@ pub fn reload_render_pipeline(pipeline: &mut Pipeline) -> Result<(), String> {
     Ok(())
 }
 
-pub fn resize_render_pipeline(window: &app::Window, pipeline: &mut Pipeline) {
+pub fn resize_render_pipeline(app: &app::App, pipeline: &mut Pipeline) {
     for i in 0..pipeline.passes.len() {
         //Refresh attachment descriptors
         for j in 0..pipeline.passes[i].fbo.attachments.len() {
@@ -284,6 +281,6 @@ pub fn resize_render_pipeline(window: &app::Window, pipeline: &mut Pipeline) {
             };
         }
 
-        pass::resize_render_pass(&mut pipeline.passes[i], window.width, window.height);
+        pass::resize_render_pass(&mut pipeline.passes[i], app.width, app.height);
     }
 }

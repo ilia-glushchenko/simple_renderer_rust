@@ -1,7 +1,5 @@
+use crate::gl::{shader, tex, uniform};
 use crate::math;
-use crate::shader;
-use crate::tex;
-use crate::uniform;
 use std::vec::Vec;
 
 #[derive(Clone)]

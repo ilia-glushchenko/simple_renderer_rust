@@ -1,13 +1,10 @@
 extern crate stb_image;
 extern crate tobj;
-use crate::helper;
-use crate::log;
-use crate::material;
+use crate::gl::{shader, tex};
+use crate::helpers::helper;
+use crate::helpers::log;
 use crate::math;
-use crate::mesh;
-use crate::model;
-use crate::shader;
-use crate::tex;
+use crate::model::{material, mesh, model};
 use stb_image::image;
 use std::fs;
 use std::path::Path;

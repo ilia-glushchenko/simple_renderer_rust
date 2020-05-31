@@ -1,6 +1,5 @@
+use crate::gl::{shader, tex};
 use crate::math;
-use crate::shader;
-use crate::tex;
 use std::rc::Rc;
 use std::string::String;
 

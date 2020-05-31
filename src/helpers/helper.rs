@@ -1,10 +1,8 @@
+use crate::gl::tex;
+use crate::helpers::loader;
 use crate::ibl;
-use crate::loader;
-use crate::material;
 use crate::math;
-use crate::mesh;
-use crate::model;
-use crate::tex;
+use crate::model::{material, mesh, model};
 use std::path::Path;
 use std::rc::Rc;
 

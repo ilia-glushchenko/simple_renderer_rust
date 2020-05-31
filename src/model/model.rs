@@ -1,6 +1,5 @@
-use crate::material;
-use crate::mesh;
-use crate::pass;
+use crate::core::pass;
+use crate::model::{material, mesh};
 use std::rc::Rc;
 use std::vec::Vec;
 

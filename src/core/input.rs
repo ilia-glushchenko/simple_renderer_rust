@@ -1,6 +1,5 @@
 extern crate glfw;
-use crate::app;
-use crate::camera;
+use crate::core::{app, camera};
 use crate::math;
 use std::collections::HashMap;
 
@@ -17,7 +16,7 @@ pub struct Data {
     pub mouse: Mouse,
 }
 
-pub fn update_input(window: &mut app::Window, input_data: &mut Data) {
+pub fn update_input(app: &mut app::App, input_data: &mut Data) {
     for (_, value) in &mut input_data.keys {
         if *value == Action::Press {
             *value = Action::Repeat;
@@ -25,49 +24,49 @@ pub fn update_input(window: &mut app::Window, input_data: &mut Data) {
     }
     input_data.keys.retain(|_, &mut v| v != Action::Release);
 
-    window.glfw.poll_events();
+    app.glfw.poll_events();
 
-    for (_, event) in glfw::flush_messages(&window.events) {
+    for (_, event) in glfw::flush_messages(&app.events) {
         if let glfw::WindowEvent::Key(key, _, action, _) = event {
             input_data.keys.insert(key, action);
         }
     }
 
-    if glfw::CursorMode::Disabled == window.handle.get_cursor_mode()
-        || glfw::CursorMode::Hidden == window.handle.get_cursor_mode()
+    if glfw::CursorMode::Disabled == app.handle.get_cursor_mode()
+        || glfw::CursorMode::Hidden == app.handle.get_cursor_mode()
     {
         input_data.mouse.prev_pos = input_data.mouse.pos;
-        input_data.mouse.pos = window.handle.get_cursor_pos();
+        input_data.mouse.pos = app.handle.get_cursor_pos();
     }
 }
 
-pub fn update_window_size(window: &mut app::Window) {
-    let (width, height) = window.handle.get_framebuffer_size();
+pub fn update_window_size(app: &mut app::App) {
+    let (width, height) = app.handle.get_framebuffer_size();
     let width = width as u32;
     let height = height as u32;
 
     if width > 0 && height > 0 {
-        if window.width != width || window.height != height {
-            window.width = width;
-            window.height = height;
-            window.resized = true;
+        if app.width != width || app.height != height {
+            app.width = width;
+            app.height = height;
+            app.resized = true;
         } else {
-            window.resized = false;
+            app.resized = false;
         }
     }
 }
 
-pub fn update_cursor_mode(window: &mut app::Window, input_data: &mut Data) {
+pub fn update_cursor_mode(app: &mut app::App, input_data: &mut Data) {
     if let Some(Action::Press) = input_data.keys.get(&Key::F) {
-        let mode = window.handle.get_cursor_mode();
+        let mode = app.handle.get_cursor_mode();
         match mode {
             glfw::CursorMode::Normal => {
-                window.handle.set_cursor_mode(glfw::CursorMode::Disabled);
-                input_data.mouse.pos = window.handle.get_cursor_pos();
+                app.handle.set_cursor_mode(glfw::CursorMode::Disabled);
+                input_data.mouse.pos = app.handle.get_cursor_pos();
                 input_data.mouse.prev_pos = input_data.mouse.pos;
             }
             glfw::CursorMode::Disabled => {
-                window.handle.set_cursor_mode(glfw::CursorMode::Normal);
+                app.handle.set_cursor_mode(glfw::CursorMode::Normal);
                 input_data.mouse.pos = (0., 0.);
                 input_data.mouse.prev_pos = input_data.mouse.pos;
             }
@@ -76,7 +75,7 @@ pub fn update_cursor_mode(window: &mut app::Window, input_data: &mut Data) {
     }
 }
 
-pub fn update_camera(camera: &mut camera::Camera, window: &app::Window, input_data: &Data) {
+pub fn update_camera(camera: &mut camera::Camera, app: &app::App, input_data: &Data) {
     let speed: f32 = 10.;
     let world_forward = math::Vec4f {
         x: 0.,
@@ -117,15 +116,15 @@ pub fn update_camera(camera: &mut camera::Camera, window: &app::Window, input_da
     let x_dist = input_data.mouse.prev_pos.0 - input_data.mouse.pos.0;
     let y_dist = input_data.mouse.prev_pos.1 - input_data.mouse.pos.1;
 
-    let yaw = (x_dist / window.width as f64) as f32;
-    let pitch = (y_dist / window.height as f64) as f32;
+    let yaw = (x_dist / app.width as f64) as f32;
+    let pitch = (y_dist / app.height as f64) as f32;
 
     camera.pitch += pitch;
     camera.yaw += yaw;
     camera.pos.x += forward.x + right.x;
     camera.pos.y += forward.y + right.y;
     camera.pos.z += forward.z + right.z;
-    camera.aspect = window.width as f32 / window.height as f32;
+    camera.aspect = app.width as f32 / app.height as f32;
 
     camera.view = math::create_view_mat4x4(camera.pos, camera.yaw, camera.pitch);
 }

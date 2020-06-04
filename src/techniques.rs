@@ -25,7 +25,11 @@ pub mod mvp {
         technique
     }
 
-    pub fn update(tech: &mut tech::Technique, camera: &camera::Camera) {
+    pub fn update(
+        tech: &mut tech::Technique,
+        camera: &camera::Camera,
+        transforms: &Vec<math::Mat4x4f>,
+    ) {
         let view_mat_index = tech
             .per_frame_uniforms
             .mat4x4f
@@ -36,6 +40,7 @@ pub mod mvp {
             .data_location
             .data[0];
         *view_mat = camera.view;
+
         let proj_mat_index = tech
             .per_frame_uniforms
             .mat4x4f
@@ -47,6 +52,18 @@ pub mod mvp {
             .data[0];
         *proj_mat =
             math::perspective_projection_mat4x4(camera.fov, camera.aspect, camera.near, camera.far);
+
+        let model_mat_index = tech
+            .per_model_uniforms
+            .mat4x4f
+            .iter()
+            .position(|x| x.name == "uModelMat4")
+            .expect("MVP technique must have uModelMat4");
+        let model_mats = &mut tech.per_model_uniforms.mat4x4f[model_mat_index].data_locations;
+        assert_eq!(model_mats.len(), transforms.len());
+        for i in 0..transforms.len() {
+            model_mats[i].data[0] = transforms[i];
+        }
     }
 }
 
@@ -54,24 +71,32 @@ pub mod lighting {
     use crate::core::{camera, tech};
     use crate::gl::tex;
     use crate::gl::uniform::{TextureSampler, Uniform};
+    use crate::helpers::helper;
+    use crate::ibl;
     use crate::math;
     use std::rc::Rc;
 
     pub fn create(
-        diffuse_cubemap: Rc<tex::DeviceTexture>,
-        brdf_lut_texture: Rc<tex::DeviceTexture>,
-        env_map_cubemap: Rc<tex::DeviceTexture>,
         camera: &camera::Camera,
+        skybox_texture: &Rc<tex::DeviceTexture>,
     ) -> tech::Technique {
         let mut technique = tech::Technique::new("Lighting");
+        let mut box_model = helper::load_skybox();
+
         technique.per_frame_uniforms.vec3f = vec![Uniform::<math::Vec3f>::new(
             "uCameraPosVec3",
             vec![camera.pos],
         )];
         technique.textures = vec![
-            TextureSampler::new("uDiffuseSamplerCube", diffuse_cubemap),
-            TextureSampler::new("uBrdfLUTSampler2D", brdf_lut_texture),
-            TextureSampler::new("uEnvMapSamplerCube", env_map_cubemap),
+            TextureSampler::new(
+                "uDiffuseSamplerCube",
+                ibl::create_diffuse_cube_map_texture(skybox_texture.clone(), &mut box_model),
+            ),
+            TextureSampler::new("uBrdfLUTSampler2D", ibl::create_brdf_lut()),
+            TextureSampler::new(
+                "uEnvMapSamplerCube",
+                ibl::create_prefiltered_environment_map(skybox_texture.clone(), &mut box_model),
+            ),
         ];
 
         technique
@@ -99,8 +124,8 @@ pub mod skybox {
     use std::rc::Rc;
 
     pub fn create(
-        skybox: Rc<tex::DeviceTexture>,
         camera: &camera::Camera,
+        skybox: Rc<tex::DeviceTexture>,
         skybox_model: math::Mat4x4f,
     ) -> Technique {
         let mut technique = Technique::new("Skybox");

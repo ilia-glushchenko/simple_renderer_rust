@@ -26,6 +26,7 @@ pub struct Attribute {
 
 #[derive(Clone)]
 pub struct HostMesh {
+    pub name: String,
     pub attributes: Vec<Attribute>,
     pub material_index: usize,
     pub vertices: Vertices,
@@ -37,6 +38,7 @@ pub struct HostMesh {
 }
 
 pub struct DeviceMesh {
+    pub name: String,
     pub vao: u32,
     pub index_count: u32,
     pub attributes: Vec<Attribute>,
@@ -72,6 +74,7 @@ impl Attribute {
 
 impl HostMesh {
     pub fn new(
+        name: String,
         material_index: usize,
         vertices: Vertices,
         normals: Normals,
@@ -81,6 +84,7 @@ impl HostMesh {
         indices: Indices,
     ) -> HostMesh {
         HostMesh {
+            name,
             attributes: create_mesh_attributes(&vertices, &normals, &tangents, &bitangents, &uvs),
             material_index,
             vertices,
@@ -107,6 +111,7 @@ impl DeviceMesh {
         );
 
         DeviceMesh {
+            name: mesh.name.clone(),
             vao,
             index_count: mesh.indices.len() as u32 / 3,
             attributes: mesh.attributes.clone(),

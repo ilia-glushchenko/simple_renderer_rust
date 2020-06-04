@@ -1,10 +1,13 @@
+use crate::asset::model;
 use crate::core::{app, pass, tech};
 use crate::gl::{shader, tex};
+use crate::helpers::{helper, log};
 use crate::math;
-use crate::model::model;
 
 pub struct Pipeline {
     pub passes: Vec<pass::Pass>,
+    pub skybox_model: model::DeviceModel,
+    pub fullsceen_model: model::DeviceModel,
 }
 
 impl Pipeline {
@@ -181,14 +184,67 @@ impl Pipeline {
         }
         let tone_mapping_pass = tone_mapping_pass.unwrap();
 
-        Ok(Pipeline {
+        let mut pipeline = Pipeline {
             passes: vec![
                 depth_pre_pass,
                 lighting_pass,
                 skybox_pass,
                 tone_mapping_pass,
             ],
-        })
+            skybox_model: helper::load_skybox(),
+            fullsceen_model: helper::create_full_screen_triangle_model(),
+        };
+
+        pipeline.skybox_model.bind_pass(&pipeline.passes[2]);
+        pipeline.fullsceen_model.bind_pass(&pipeline.passes[3]);
+
+        Ok(pipeline)
+    }
+
+    pub fn reload(
+        &mut self,
+        techniques: &mut tech::TechniqueContainer,
+        device_model: &mut model::DeviceModel,
+    ) {
+        techniques.unbind_pipeline(self);
+        self.unbind_model(device_model);
+
+        if let Err(msg) = reload_render_pipeline(self) {
+            log::log_error(format!("Failed to hot reload pipeline:\n{}", msg));
+        } else {
+            log::log_info("Pipeline hot reloaded".to_string());
+        }
+
+        techniques.bind_pipeline(self);
+        self.bind_model(device_model);
+
+        if let Err(msg) = is_render_pipeline_valid(self, &techniques, &device_model) {
+            log::log_error(msg);
+        }
+    }
+
+    pub fn bind_model(&self, device_model: &mut model::DeviceModel) {
+        device_model.bind_pass(&self.passes[0]);
+        device_model.bind_pass(&self.passes[1]);
+    }
+
+    pub fn unbind_model(&self, device_model: &mut model::DeviceModel) {
+        device_model.unbind_pass(self.passes[0].program.handle);
+        device_model.unbind_pass(self.passes[1].program.handle);
+    }
+
+    pub fn draw(
+        &self,
+        app: &app::App,
+        techniques: &tech::TechniqueContainer,
+        device_model: &model::DeviceModel,
+    ) {
+        self.passes[0].execute(&techniques, &device_model);
+        self.passes[1].execute(&techniques, &device_model);
+        self.passes[2].execute(&techniques, &self.skybox_model);
+        self.passes[3].execute(&techniques, &self.fullsceen_model);
+
+        pass::blit_framebuffer_to_backbuffer(&self.passes.last().unwrap(), app);
     }
 }
 
@@ -200,36 +256,6 @@ pub fn is_render_pipeline_valid(
     for pass in pipeline.passes.iter() {
         if let Err(msg) = pass::is_render_pass_valid(&pass, &techniques, &device_model) {
             return Err(msg);
-        }
-    }
-
-    Ok(())
-}
-
-pub fn reload_render_pipeline(pipeline: &mut Pipeline) -> Result<(), String> {
-    let mut new_pipeline_programs: Vec<shader::ShaderProgram> = Vec::new();
-
-    for pass in pipeline.passes.iter_mut() {
-        //First try to load new shader
-        let device_program = shader::ShaderProgram::new(&pass.program_desc);
-        if let Err(msg) = device_program {
-            return Err(msg);
-        }
-        new_pipeline_programs.push(device_program.unwrap());
-    }
-
-    for pass in pipeline.passes.iter_mut().rev() {
-        //Delete old if success
-        for dependency in &mut pass.dependencies {
-            dependency
-                .sampler
-                .unbind_shader_program(pass.program.handle);
-        }
-
-        //Assign new
-        pass.program = new_pipeline_programs.pop().unwrap();
-        for dependency in &mut pass.dependencies {
-            dependency.sampler.bind_shader_program(&pass.program);
         }
     }
 
@@ -283,4 +309,43 @@ pub fn resize_render_pipeline(app: &app::App, pipeline: &mut Pipeline) {
 
         pass::resize_render_pass(&mut pipeline.passes[i], app.width, app.height);
     }
+}
+
+fn reload_render_pipeline(pipeline: &mut Pipeline) -> Result<(), String> {
+    pipeline
+        .skybox_model
+        .unbind_pass(pipeline.passes[2].program.handle);
+    pipeline
+        .fullsceen_model
+        .unbind_pass(pipeline.passes[3].program.handle);
+
+    let mut new_pipeline_programs: Vec<shader::ShaderProgram> = Vec::new();
+    for pass in pipeline.passes.iter_mut() {
+        //First try to load new shader
+        let device_program = shader::ShaderProgram::new(&pass.program_desc);
+        if let Err(msg) = device_program {
+            return Err(msg);
+        }
+        new_pipeline_programs.push(device_program.unwrap());
+    }
+
+    for pass in pipeline.passes.iter_mut().rev() {
+        //Delete old if success
+        for dependency in &mut pass.dependencies {
+            dependency
+                .sampler
+                .unbind_shader_program(pass.program.handle);
+        }
+
+        //Assign new
+        pass.program = new_pipeline_programs.pop().unwrap();
+        for dependency in &mut pass.dependencies {
+            dependency.sampler.bind_shader_program(&pass.program);
+        }
+    }
+
+    pipeline.skybox_model.bind_pass(&pipeline.passes[2]);
+    pipeline.fullsceen_model.bind_pass(&pipeline.passes[3]);
+
+    Ok(())
 }

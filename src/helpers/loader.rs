@@ -1,16 +1,16 @@
 extern crate stb_image;
 extern crate tobj;
+use crate::asset::{material, mesh, model};
 use crate::gl::{shader, tex};
 use crate::helpers::helper;
 use crate::helpers::log;
 use crate::math;
-use crate::model::{material, mesh, model};
 use stb_image::image;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::mpsc::channel;
+use std::sync::Arc;
 use threadpool::ThreadPool;
 
 pub fn load_host_shader_program(
@@ -139,8 +139,8 @@ pub fn load_host_model_from_obj(file_path: &Path) -> model::HostModel {
     }
 
     model::HostModel {
-        meshes: Rc::new(meshes),
-        materials: Rc::new(materials),
+        meshes: Arc::new(meshes),
+        materials: Arc::new(materials),
     }
 }
 
@@ -207,6 +207,7 @@ fn create_host_mesh_from_tobj_mesh(raw_model: &tobj::Model) -> mesh::HostMesh {
         helper::calculate_tangents_and_bitangents(&indices, &vertices, &uvs);
 
     mesh::HostMesh::new(
+        raw_model.name.clone(),
         raw_model.mesh.material_id.expect(&format!(
             "Raw OBJ Model: {} Does not have material index",
             raw_model.name,
@@ -281,7 +282,6 @@ fn create_host_material_from_tobj_material(
         },
     ]
     .into_iter()
-    // .filter(|x| x.path.is_file())
     .collect();
 
     let pool_size = texture_load_infos.len();

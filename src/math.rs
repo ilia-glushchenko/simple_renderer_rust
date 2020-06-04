@@ -34,6 +34,12 @@ pub type Vec2u = Vec2<u32>;
 #[allow(dead_code)]
 pub type Vec2i = Vec2<i16>;
 
+impl<T> Vec2<T> {
+    pub fn new(x: T, y: T) -> Vec2<T> {
+        Vec2 { x, y }
+    }
+}
+
 #[derive(Copy, Clone)]
 pub struct Vec3<T> {
     pub x: T,
@@ -66,6 +72,12 @@ pub type Vec4f = Vec4<f32>;
 pub type Vec4u = Vec4<u32>;
 #[allow(dead_code)]
 pub type Vec4i = Vec4<i16>;
+
+impl<T> Vec4<T> {
+    pub fn new(x: T, y: T, z: T, w: T) -> Vec4<T> {
+        Vec4 { x, y, z, w }
+    }
+}
 
 #[allow(dead_code)]
 #[derive(Copy, Clone)]
@@ -101,7 +113,25 @@ where
     T: From<i16>,
 {
     pub fn identity() -> Mat4x4<T> {
-        identity_mat4x4::<T>()
+        Mat4x4::<T> {
+            r1: Vec4::<T>::new(T::from(1), T::from(0), T::from(0), T::from(0)),
+            r2: Vec4::<T>::new(T::from(0), T::from(1), T::from(0), T::from(0)),
+            r3: Vec4::<T>::new(T::from(0), T::from(0), T::from(1), T::from(0)),
+            r4: Vec4::<T>::new(T::from(0), T::from(0), T::from(0), T::from(1)),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn null() -> Mat4x4<T>
+    where
+        T: From<i16>,
+    {
+        Mat4x4::<T> {
+            r1: Vec4::<T>::new(T::from(0), T::from(0), T::from(0), T::from(0)),
+            r2: Vec4::<T>::new(T::from(0), T::from(0), T::from(0), T::from(0)),
+            r3: Vec4::<T>::new(T::from(0), T::from(0), T::from(0), T::from(0)),
+            r4: Vec4::<T>::new(T::from(0), T::from(0), T::from(0), T::from(0)),
+        }
     }
 }
 
@@ -709,82 +739,19 @@ where
     fn mul(self, other: Mat3x3<T>) -> Self::Output {
         Mat3x3::<T> {
             r1: Vec3::<T> {
-                x: dot_vec3(
-                    self.r1,
-                    Vec3::<T> {
-                        x: other.r1.x,
-                        y: other.r2.x,
-                        z: other.r3.x,
-                    },
-                ),
-                y: dot_vec3(
-                    self.r1,
-                    Vec3::<T> {
-                        x: other.r1.y,
-                        y: other.r2.y,
-                        z: other.r3.y,
-                    },
-                ),
-                z: dot_vec3(
-                    self.r1,
-                    Vec3::<T> {
-                        x: other.r1.z,
-                        y: other.r2.z,
-                        z: other.r3.z,
-                    },
-                ),
+                x: dot_vec3(self.r1, Vec3::<T>::new(other.r1.x, other.r2.x, other.r3.x)),
+                y: dot_vec3(self.r1, Vec3::<T>::new(other.r1.y, other.r2.y, other.r3.y)),
+                z: dot_vec3(self.r1, Vec3::<T>::new(other.r1.z, other.r2.z, other.r3.z)),
             },
             r2: Vec3::<T> {
-                x: dot_vec3(
-                    self.r2,
-                    Vec3::<T> {
-                        x: other.r1.x,
-                        y: other.r2.x,
-                        z: other.r3.x,
-                    },
-                ),
-                y: dot_vec3(
-                    self.r2,
-                    Vec3::<T> {
-                        x: other.r1.y,
-                        y: other.r2.y,
-                        z: other.r3.y,
-                    },
-                ),
-                z: dot_vec3(
-                    self.r2,
-                    Vec3::<T> {
-                        x: other.r1.z,
-                        y: other.r2.z,
-                        z: other.r3.z,
-                    },
-                ),
+                x: dot_vec3(self.r2, Vec3::<T>::new(other.r1.x, other.r2.x, other.r3.x)),
+                y: dot_vec3(self.r2, Vec3::<T>::new(other.r1.y, other.r2.y, other.r3.y)),
+                z: dot_vec3(self.r2, Vec3::<T>::new(other.r1.z, other.r2.z, other.r3.z)),
             },
             r3: Vec3::<T> {
-                x: dot_vec3(
-                    self.r3,
-                    Vec3::<T> {
-                        x: other.r1.x,
-                        y: other.r2.x,
-                        z: other.r3.x,
-                    },
-                ),
-                y: dot_vec3(
-                    self.r3,
-                    Vec3::<T> {
-                        x: other.r1.y,
-                        y: other.r2.y,
-                        z: other.r3.y,
-                    },
-                ),
-                z: dot_vec3(
-                    self.r3,
-                    Vec3::<T> {
-                        x: other.r1.z,
-                        y: other.r2.z,
-                        z: other.r3.z,
-                    },
-                ),
+                x: dot_vec3(self.r3, Vec3::<T>::new(other.r1.x, other.r2.x, other.r3.x)),
+                y: dot_vec3(self.r3, Vec3::<T>::new(other.r1.y, other.r2.y, other.r3.y)),
+                z: dot_vec3(self.r3, Vec3::<T>::new(other.r1.z, other.r2.z, other.r3.z)),
             },
         }
     }
@@ -801,153 +768,73 @@ where
             r1: Vec4::<T> {
                 x: dot_vec4(
                     self.r1,
-                    Vec4::<T> {
-                        x: other.r1.x,
-                        y: other.r2.x,
-                        z: other.r3.x,
-                        w: other.r4.x,
-                    },
+                    Vec4::<T>::new(other.r1.x, other.r2.x, other.r3.x, other.r4.x),
                 ),
                 y: dot_vec4(
                     self.r1,
-                    Vec4::<T> {
-                        x: other.r1.y,
-                        y: other.r2.y,
-                        z: other.r3.y,
-                        w: other.r4.y,
-                    },
+                    Vec4::<T>::new(other.r1.y, other.r2.y, other.r3.y, other.r4.y),
                 ),
                 z: dot_vec4(
                     self.r1,
-                    Vec4::<T> {
-                        x: other.r1.z,
-                        y: other.r2.z,
-                        z: other.r3.z,
-                        w: other.r4.z,
-                    },
+                    Vec4::<T>::new(other.r1.z, other.r2.z, other.r3.z, other.r4.z),
                 ),
                 w: dot_vec4(
                     self.r1,
-                    Vec4::<T> {
-                        x: other.r1.w,
-                        y: other.r2.w,
-                        z: other.r3.w,
-                        w: other.r4.w,
-                    },
+                    Vec4::<T>::new(other.r1.w, other.r2.w, other.r3.w, other.r4.w),
                 ),
             },
             r2: Vec4::<T> {
                 x: dot_vec4(
                     self.r2,
-                    Vec4::<T> {
-                        x: other.r1.x,
-                        y: other.r2.x,
-                        z: other.r3.x,
-                        w: other.r4.x,
-                    },
+                    Vec4::<T>::new(other.r1.x, other.r2.x, other.r3.x, other.r4.x),
                 ),
                 y: dot_vec4(
                     self.r2,
-                    Vec4::<T> {
-                        x: other.r1.y,
-                        y: other.r2.y,
-                        z: other.r3.y,
-                        w: other.r4.y,
-                    },
+                    Vec4::<T>::new(other.r1.y, other.r2.y, other.r3.y, other.r4.y),
                 ),
                 z: dot_vec4(
                     self.r2,
-                    Vec4::<T> {
-                        x: other.r1.z,
-                        y: other.r2.z,
-                        z: other.r3.z,
-                        w: other.r4.z,
-                    },
+                    Vec4::<T>::new(other.r1.z, other.r2.z, other.r3.z, other.r4.z),
                 ),
                 w: dot_vec4(
                     self.r2,
-                    Vec4::<T> {
-                        x: other.r1.w,
-                        y: other.r2.w,
-                        z: other.r3.w,
-                        w: other.r4.w,
-                    },
+                    Vec4::<T>::new(other.r1.w, other.r2.w, other.r3.w, other.r4.w),
                 ),
             },
             r3: Vec4::<T> {
                 x: dot_vec4(
                     self.r3,
-                    Vec4::<T> {
-                        x: other.r1.x,
-                        y: other.r2.x,
-                        z: other.r3.x,
-                        w: other.r4.x,
-                    },
+                    Vec4::<T>::new(other.r1.x, other.r2.x, other.r3.x, other.r4.x),
                 ),
                 y: dot_vec4(
                     self.r3,
-                    Vec4::<T> {
-                        x: other.r1.y,
-                        y: other.r2.y,
-                        z: other.r3.y,
-                        w: other.r4.y,
-                    },
+                    Vec4::<T>::new(other.r1.y, other.r2.y, other.r3.y, other.r4.y),
                 ),
                 z: dot_vec4(
                     self.r3,
-                    Vec4::<T> {
-                        x: other.r1.z,
-                        y: other.r2.z,
-                        z: other.r3.z,
-                        w: other.r4.z,
-                    },
+                    Vec4::<T>::new(other.r1.z, other.r2.z, other.r3.z, other.r4.z),
                 ),
                 w: dot_vec4(
                     self.r3,
-                    Vec4::<T> {
-                        x: other.r1.w,
-                        y: other.r2.w,
-                        z: other.r3.w,
-                        w: other.r4.w,
-                    },
+                    Vec4::<T>::new(other.r1.w, other.r2.w, other.r3.w, other.r4.w),
                 ),
             },
             r4: Vec4::<T> {
                 x: dot_vec4(
                     self.r4,
-                    Vec4::<T> {
-                        x: other.r1.x,
-                        y: other.r2.x,
-                        z: other.r3.x,
-                        w: other.r4.x,
-                    },
+                    Vec4::<T>::new(other.r1.x, other.r2.x, other.r3.x, other.r4.x),
                 ),
                 y: dot_vec4(
                     self.r4,
-                    Vec4::<T> {
-                        x: other.r1.y,
-                        y: other.r2.y,
-                        z: other.r3.y,
-                        w: other.r4.y,
-                    },
+                    Vec4::<T>::new(other.r1.y, other.r2.y, other.r3.y, other.r4.y),
                 ),
                 z: dot_vec4(
                     self.r4,
-                    Vec4::<T> {
-                        x: other.r1.z,
-                        y: other.r2.z,
-                        z: other.r3.z,
-                        w: other.r4.z,
-                    },
+                    Vec4::<T>::new(other.r1.z, other.r2.z, other.r3.z, other.r4.z),
                 ),
                 w: dot_vec4(
                     self.r4,
-                    Vec4::<T> {
-                        x: other.r1.w,
-                        y: other.r2.w,
-                        z: other.r3.w,
-                        w: other.r4.w,
-                    },
+                    Vec4::<T>::new(other.r1.w, other.r2.w, other.r3.w, other.r4.w),
                 ),
             },
         }
@@ -960,30 +847,10 @@ where
 {
     fn from(src: Mat3x3<T>) -> Mat4x4<T> {
         Mat4x4::<T> {
-            r1: Vec4::<T> {
-                x: src.r1.x,
-                y: src.r1.y,
-                z: src.r1.z,
-                w: T::from(0),
-            },
-            r2: Vec4::<T> {
-                x: src.r2.x,
-                y: src.r2.y,
-                z: src.r2.z,
-                w: T::from(0),
-            },
-            r3: Vec4::<T> {
-                x: src.r3.x,
-                y: src.r3.y,
-                z: src.r3.z,
-                w: T::from(0),
-            },
-            r4: Vec4::<T> {
-                x: T::from(0),
-                y: T::from(0),
-                z: T::from(0),
-                w: T::from(1),
-            },
+            r1: Vec4::<T>::new(src.r1.x, src.r1.y, src.r1.z, T::from(0)),
+            r2: Vec4::<T>::new(src.r2.x, src.r2.y, src.r2.z, T::from(0)),
+            r3: Vec4::<T>::new(src.r3.x, src.r3.y, src.r3.z, T::from(0)),
+            r4: Vec4::<T>::new(T::from(0), T::from(0), T::from(0), T::from(1)),
         }
     }
 }
@@ -994,54 +861,9 @@ where
     T: From<i16>,
 {
     Mat3x3::<T> {
-        r1: Vec3::<T> {
-            x: T::from(0),
-            y: T::from(0),
-            z: T::from(0),
-        },
-        r2: Vec3::<T> {
-            x: T::from(0),
-            y: T::from(0),
-            z: T::from(0),
-        },
-        r3: Vec3::<T> {
-            x: T::from(0),
-            y: T::from(0),
-            z: T::from(0),
-        },
-    }
-}
-
-#[allow(dead_code)]
-pub fn null_mat4x4<T>() -> Mat4x4<T>
-where
-    T: From<i16>,
-{
-    Mat4x4::<T> {
-        r1: Vec4::<T> {
-            x: T::from(0),
-            y: T::from(0),
-            z: T::from(0),
-            w: T::from(0),
-        },
-        r2: Vec4::<T> {
-            x: T::from(0),
-            y: T::from(0),
-            z: T::from(0),
-            w: T::from(0),
-        },
-        r3: Vec4::<T> {
-            x: T::from(0),
-            y: T::from(0),
-            z: T::from(0),
-            w: T::from(0),
-        },
-        r4: Vec4::<T> {
-            x: T::from(0),
-            y: T::from(0),
-            z: T::from(0),
-            w: T::from(0),
-        },
+        r1: Vec3::<T>::new(T::from(0), T::from(0), T::from(0)),
+        r2: Vec3::<T>::new(T::from(0), T::from(0), T::from(0)),
+        r3: Vec3::<T>::new(T::from(0), T::from(0), T::from(0)),
     }
 }
 
@@ -1051,117 +873,36 @@ where
     T: From<i16>,
 {
     Mat3x3::<T> {
-        r1: Vec3::<T> {
-            x: T::from(1),
-            y: T::from(0),
-            z: T::from(0),
-        },
-        r2: Vec3::<T> {
-            x: T::from(0),
-            y: T::from(1),
-            z: T::from(0),
-        },
-        r3: Vec3::<T> {
-            x: T::from(0),
-            y: T::from(0),
-            z: T::from(1),
-        },
-    }
-}
-
-#[allow(dead_code)]
-pub fn identity_mat4x4<T>() -> Mat4x4<T>
-where
-    T: From<i16>,
-{
-    Mat4x4::<T> {
-        r1: Vec4::<T> {
-            x: T::from(1),
-            y: T::from(0),
-            z: T::from(0),
-            w: T::from(0),
-        },
-        r2: Vec4::<T> {
-            x: T::from(0),
-            y: T::from(1),
-            z: T::from(0),
-            w: T::from(0),
-        },
-        r3: Vec4::<T> {
-            x: T::from(0),
-            y: T::from(0),
-            z: T::from(1),
-            w: T::from(0),
-        },
-        r4: Vec4::<T> {
-            x: T::from(0),
-            y: T::from(0),
-            z: T::from(0),
-            w: T::from(1),
-        },
+        r1: Vec3::<T>::new(T::from(1), T::from(0), T::from(0)),
+        r2: Vec3::<T>::new(T::from(0), T::from(1), T::from(0)),
+        r3: Vec3::<T>::new(T::from(0), T::from(0), T::from(1)),
     }
 }
 
 #[allow(dead_code)]
 pub fn x_rotation_mat3x3(angle: f32) -> Mat3x3f {
     Mat3x3f {
-        r1: Vec3f {
-            x: 1.,
-            y: 0.,
-            z: 0.,
-        },
-        r2: Vec3f {
-            x: 0.,
-            y: angle.cos(),
-            z: -angle.sin(),
-        },
-        r3: Vec3f {
-            x: 0.,
-            y: angle.sin(),
-            z: angle.cos(),
-        },
+        r1: Vec3f::new(1., 0., 0.),
+        r2: Vec3f::new(0., angle.cos(), -angle.sin()),
+        r3: Vec3f::new(0., angle.sin(), angle.cos()),
     }
 }
 
 #[allow(dead_code)]
 pub fn y_rotation_mat3x3(angle: f32) -> Mat3x3f {
     Mat3x3f {
-        r1: Vec3f {
-            x: angle.cos(),
-            y: 0.,
-            z: angle.sin(),
-        },
-        r2: Vec3f {
-            x: 0.,
-            y: 1.,
-            z: 0.,
-        },
-        r3: Vec3f {
-            x: -angle.sin(),
-            y: 0.,
-            z: angle.cos(),
-        },
+        r1: Vec3f::new(angle.cos(), 0., angle.sin()),
+        r2: Vec3f::new(0., 1., 0.),
+        r3: Vec3f::new(-angle.sin(), 0., angle.cos()),
     }
 }
 
 #[allow(dead_code)]
 pub fn z_rotation_mat3x3(angle: f32) -> Mat3x3f {
     Mat3x3f {
-        r1: Vec3f {
-            x: angle.cos(),
-            y: -angle.sin(),
-            z: 0.,
-        },
-        r2: Vec3f {
-            x: angle.sin(),
-            y: angle.cos(),
-            z: 0.,
-        },
-        r3: Vec3f {
-            x: 0.,
-            y: 0.,
-            z: 1.,
-        },
+        r1: Vec3f::new(angle.cos(), -angle.sin(), 0.),
+        r2: Vec3f::new(angle.sin(), angle.cos(), 0.),
+        r3: Vec3f::new(0., 0., 1.),
     }
 }
 
@@ -1212,7 +953,7 @@ pub fn scale_uniform_mat4x4(scale: f32) -> Mat4x4f {
 
 #[allow(dead_code)]
 pub fn tranlation_mat4x4(offset: Vec3f) -> Mat4x4f {
-    let mut mat = identity_mat4x4();
+    let mut mat = Mat4x4f::identity();
     mat.r1.w = offset.x;
     mat.r2.w = offset.y;
     mat.r3.w = offset.z;
@@ -1228,7 +969,7 @@ pub fn orthographics_projection_planes_mat4x4(
     near: f32,
     far: f32,
 ) -> Mat4x4f {
-    let mut proj = identity_mat4x4::<f32>();
+    let mut proj = Mat4x4f::identity();
 
     proj.r1.x = 2_f32 / (right - left);
     proj.r1.w = -(right + left) / (right - left);
@@ -1249,7 +990,7 @@ pub fn perspective_projection_planes_mat4x4(
     near: f32,
     far: f32,
 ) -> Mat4x4f {
-    let mut proj = null_mat4x4::<f32>();
+    let mut proj = Mat4x4f::null();
 
     proj.r1.x = 2_f32 * near / (right - left);
     proj.r1.z = (right + left) / (right - left);
@@ -1266,7 +1007,7 @@ pub fn perspective_projection_planes_mat4x4(
 pub fn perspective_projection_mat4x4(vfov: f32, aspect: f32, near: f32, far: f32) -> Mat4x4f {
     let c = 1_f32 / (vfov / 2_f32).tan();
 
-    let mut proj = null_mat4x4::<f32>();
+    let mut proj = Mat4x4f::null();
     proj.r1.x = c / aspect;
     proj.r2.y = c;
     proj.r3.z = -(far + near) / (far - near);

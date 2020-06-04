@@ -1,5 +1,5 @@
 extern crate gl;
-use crate::core::{pass, pipeline};
+use crate::core::{pass, pipeline, tech};
 use crate::gl::{shader, uniform};
 use std::collections::HashMap;
 use std::vec::Vec;
@@ -19,13 +19,25 @@ impl TechniqueContainer {
 impl TechniqueContainer {
     pub fn bind_pipeline(&mut self, pipeline: &pipeline::Pipeline) {
         for pass in pipeline.passes.iter() {
-            pass::bind_techniques_to_render_pass(self, &pass);
+            self.bind_render_pass(&pass);
         }
     }
 
     pub fn unbind_pipeline(&mut self, pipeline: &pipeline::Pipeline) {
         for pass in pipeline.passes.iter() {
-            pass::unbind_techniques_from_render_pass(self, pass.program.handle);
+            self.unbind_render_pass(pass.program.handle);
+        }
+    }
+
+    pub fn bind_render_pass(&mut self, pass: &pass::Pass) {
+        for tech in &pass.techniques {
+            tech::bind_shader_program_to_technique(self.map.get_mut(&tech).unwrap(), &pass.program);
+        }
+    }
+
+    pub fn unbind_render_pass(&mut self, pass_program_handle: u32) {
+        for (_, technique) in self.map.iter_mut() {
+            tech::unbind_shader_program_from_technique(technique, pass_program_handle);
         }
     }
 }

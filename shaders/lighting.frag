@@ -128,9 +128,9 @@ struct POM {
 
 POM ParallaxOcclusionMapping(vec2 uv, vec3 v)
 {
-    const float height_scale = 0.01;
+    const float height_scale = 0.1;
     const float minLayers = 8.0;
-    const float maxLayers = 32.0;
+    const float maxLayers = 16.0;
     const float numLayers = mix(maxLayers, minLayers, abs(dot(vec3(0.0, 0.0, 1.0), v)));
     float layerDepth = 1.0 / numLayers;
 
@@ -169,8 +169,8 @@ float GetParallaxSelfShadow(vec2 uv, vec3 l, float depth) {
 
 	float alignFactor = dot(vec3(0., 0., 1.), l);
 	if (alignFactor > 0.) {
-		const float minLayers = 16.;
-		const float maxLayers = 32.;
+		const float minLayers = 2.;
+		const float maxLayers = 8.;
 		float numLayers = mix(maxLayers, minLayers, abs(alignFactor));
 		float deltaDepth = depth/numLayers;
 		vec2 deltaUV = height_scale * l.xy/(l.z * numLayers);
@@ -500,10 +500,8 @@ void main()
 
     vec3 Lo =
           CalculatePointLights(pbr.albedo, pbr.metalness, pbr.roughness, F0, v, n, TBN, positionTBN)
-        //+ CalculateDirectLights(pbr.albedo, pbr.metalness, pbr.roughness, F0, v, n, TBN);
+        + CalculateDirectLights(pbr.albedo, pbr.metalness, pbr.roughness, F0, v, n, TBN)
         + CalculateIblLight(pbr.albedo, pbr.metalness, pbr.roughness, F0, v, n);
 
     outColor = vec4(Lo, 1);
-
-    // outColor = vec4(pbr.albedo, 1);
 }

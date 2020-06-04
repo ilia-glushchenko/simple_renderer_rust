@@ -1,9 +1,9 @@
 extern crate gl;
+use crate::asset::{material, model};
 use crate::core::{app, tech};
 use crate::gl::{shader, tex, uniform};
 use crate::helpers::log;
 use crate::math;
-use crate::model::{material, model};
 use std::collections::HashMap;
 use std::ptr::null;
 use std::rc::Rc;
@@ -208,23 +208,102 @@ impl Pass {
 
         Ok(())
     }
-}
 
-pub fn bind_techniques_to_render_pass(techniques: &mut tech::TechniqueContainer, pass: &Pass) {
-    for tech in &pass.techniques {
-        tech::bind_shader_program_to_technique(
-            techniques.map.get_mut(&tech).unwrap(),
-            &pass.program,
-        );
-    }
-}
+    pub fn execute(&self, techniques: &tech::TechniqueContainer, model: &model::DeviceModel) {
+        let mut clear_mask: gl::types::GLbitfield = 0;
 
-pub fn unbind_techniques_from_render_pass(
-    techniques: &mut tech::TechniqueContainer,
-    pass_program_handle: u32,
-) {
-    for (_, technique) in techniques.map.iter_mut() {
-        tech::unbind_shader_program_from_technique(technique, pass_program_handle);
+        for attachment in &self.fbo.attachments {
+            match attachment.desc.flavor {
+                PassAttachmentType::Color(clear_color) => unsafe {
+                    gl::ClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
+
+                    if attachment.desc.write {
+                        gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
+                    } else {
+                        gl::ColorMask(gl::FALSE, gl::FALSE, gl::FALSE, gl::FALSE);
+                    }
+
+                    if attachment.desc.clear {
+                        clear_mask = clear_mask | gl::COLOR_BUFFER_BIT;
+                    }
+                },
+                PassAttachmentType::Depth(clear_depth, depth_func) => unsafe {
+                    gl::Enable(gl::DEPTH_TEST);
+                    gl::ClearDepth(clear_depth as f64);
+                    gl::DepthFunc(depth_func);
+
+                    if attachment.desc.write {
+                        gl::DepthMask(gl::TRUE);
+                    } else {
+                        gl::DepthMask(gl::FALSE);
+                    }
+
+                    if attachment.desc.clear {
+                        clear_mask = clear_mask | gl::DEPTH_BUFFER_BIT;
+                    }
+                },
+            }
+        }
+
+        unsafe {
+            gl::BindFramebuffer(gl::FRAMEBUFFER, self.fbo.handle);
+            gl::Clear(clear_mask);
+            gl::Viewport(0, 0, self.width as i32, self.height as i32);
+            gl::UseProgram(self.program.handle);
+        }
+
+        for technique_name in &self.techniques {
+            let technique = &techniques.map.get(&technique_name).unwrap();
+
+            uniform::update_per_frame_uniforms(&self.program, &technique.per_frame_uniforms);
+            for texture in &technique.textures {
+                bind_texture(self.program.handle, texture);
+            }
+        }
+
+        for (i, mesh) in model.meshes.iter().enumerate() {
+            unsafe {
+                gl::BindVertexArray(mesh.vao);
+            }
+
+            bind_material(
+                &self.program,
+                &model.materials[mesh.material_index as usize],
+            );
+            bind_dependencies(&self.program, &self.dependencies);
+
+            for technique in &self.techniques {
+                uniform::update_per_model_uniform(
+                    &self.program,
+                    &techniques.map.get(&technique).unwrap().per_model_uniforms,
+                    i,
+                );
+            }
+
+            unsafe {
+                gl::DrawElements(
+                    gl::TRIANGLES,
+                    (mesh.index_count * 3) as i32,
+                    gl::UNSIGNED_INT,
+                    null(),
+                );
+            }
+
+            unbind_dependencies(&self.program, &self.dependencies);
+            unbind_material(
+                &self.program,
+                &model.materials[mesh.material_index as usize],
+            );
+        }
+
+        for technique_name in &self.techniques {
+            let technique = &techniques.map.get(&technique_name).unwrap();
+            for texture in &technique.textures {
+                unbind_texture(self.program.handle, texture);
+            }
+        }
+
+        unsafe { gl::BindFramebuffer(gl::FRAMEBUFFER, self.fbo.handle) };
     }
 }
 
@@ -461,107 +540,6 @@ pub fn is_render_pass_valid(
     }
 
     Ok(())
-}
-
-pub fn execute_render_pass(
-    pass: &Pass,
-    techniques: &tech::TechniqueContainer,
-    model: &model::DeviceModel,
-) {
-    let mut clear_mask: gl::types::GLbitfield = 0;
-
-    for attachment in &pass.fbo.attachments {
-        match attachment.desc.flavor {
-            PassAttachmentType::Color(clear_color) => unsafe {
-                gl::ClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
-
-                if attachment.desc.write {
-                    gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
-                } else {
-                    gl::ColorMask(gl::FALSE, gl::FALSE, gl::FALSE, gl::FALSE);
-                }
-
-                if attachment.desc.clear {
-                    clear_mask = clear_mask | gl::COLOR_BUFFER_BIT;
-                }
-            },
-            PassAttachmentType::Depth(clear_depth, depth_func) => unsafe {
-                gl::Enable(gl::DEPTH_TEST);
-                gl::ClearDepth(clear_depth as f64);
-                gl::DepthFunc(depth_func);
-
-                if attachment.desc.write {
-                    gl::DepthMask(gl::TRUE);
-                } else {
-                    gl::DepthMask(gl::FALSE);
-                }
-
-                if attachment.desc.clear {
-                    clear_mask = clear_mask | gl::DEPTH_BUFFER_BIT;
-                }
-            },
-        }
-    }
-
-    unsafe {
-        gl::BindFramebuffer(gl::FRAMEBUFFER, pass.fbo.handle);
-        gl::Clear(clear_mask);
-        gl::Viewport(0, 0, pass.width as i32, pass.height as i32);
-        gl::UseProgram(pass.program.handle);
-    }
-
-    for technique_name in &pass.techniques {
-        let technique = &techniques.map.get(&technique_name).unwrap();
-
-        uniform::update_per_frame_uniforms(&pass.program, &technique.per_frame_uniforms);
-        for texture in &technique.textures {
-            bind_texture(pass.program.handle, texture);
-        }
-    }
-
-    for (i, mesh) in model.meshes.iter().enumerate() {
-        unsafe {
-            gl::BindVertexArray(mesh.vao);
-        }
-
-        bind_material(
-            &pass.program,
-            &model.materials[mesh.material_index as usize],
-        );
-        bind_dependencies(&pass.program, &pass.dependencies);
-
-        for technique in &pass.techniques {
-            uniform::update_per_model_uniform(
-                &pass.program,
-                &techniques.map.get(&technique).unwrap().per_model_uniforms,
-                i,
-            );
-        }
-
-        unsafe {
-            gl::DrawElements(
-                gl::TRIANGLES,
-                (mesh.index_count * 3) as i32,
-                gl::UNSIGNED_INT,
-                null(),
-            );
-        }
-
-        unbind_dependencies(&pass.program, &pass.dependencies);
-        unbind_material(
-            &pass.program,
-            &model.materials[mesh.material_index as usize],
-        );
-    }
-
-    for technique_name in &pass.techniques {
-        let technique = &techniques.map.get(&technique_name).unwrap();
-        for texture in &technique.textures {
-            unbind_texture(pass.program.handle, texture);
-        }
-    }
-
-    unsafe { gl::BindFramebuffer(gl::FRAMEBUFFER, pass.fbo.handle) };
 }
 
 pub fn blit_framebuffer_to_backbuffer(pass: &Pass, app: &app::App) {

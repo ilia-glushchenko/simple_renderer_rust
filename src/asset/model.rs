@@ -1,12 +1,12 @@
+use crate::asset::{material, mesh};
 use crate::core::pass;
-use crate::model::{material, mesh};
-use std::rc::Rc;
+use std::sync::Arc;
 use std::vec::Vec;
 
 #[derive(Clone)]
 pub struct HostModel {
-    pub meshes: Rc<Vec<mesh::HostMesh>>,
-    pub materials: Rc<Vec<material::HostMaterial>>,
+    pub meshes: Arc<Vec<mesh::HostMesh>>,
+    pub materials: Arc<Vec<material::HostMaterial>>,
 }
 
 pub struct DeviceModel {

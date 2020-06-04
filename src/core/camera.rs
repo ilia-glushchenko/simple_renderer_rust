@@ -14,7 +14,7 @@ pub struct Camera {
 
 pub fn create_default_camera(width: u32, height: u32) -> Camera {
     Camera {
-        view: math::identity_mat4x4(),
+        view: math::Mat4x4f::identity(),
         // pos: math::Vec3f::new(0., 500., 0.),
         pos: math::Vec3f::new(0., 0., 200.),
         pitch: 0.,

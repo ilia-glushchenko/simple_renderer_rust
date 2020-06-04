@@ -4,18 +4,21 @@ extern crate glfw;
 extern crate stb_image;
 
 use glfw::Context;
-use std::collections::HashMap;
-use std::ffi::c_void;
-use std::ffi::CStr;
+use std::ffi::{c_void, CStr};
 use std::ptr::null;
 
-use crate::core::{app, camera, input, pass, pipeline, tech};
+use crate::asset::model;
+use crate::core::{app, camera, input, pipeline, tech};
 use crate::helpers::{helper, log};
+use crate::math;
+use crate::ui;
 use crate::{ibl, techniques};
 
 pub struct App {
     pub glfw: glfw::Glfw,
-    pub handle: glfw::Window,
+    pub imgui: imgui::Context,
+    pub imgui_glfw: ui::ImguiGLFW,
+    pub window: glfw::Window,
     pub events: std::sync::mpsc::Receiver<(f64, glfw::WindowEvent)>,
     pub width: u32,
     pub height: u32,
@@ -32,13 +35,14 @@ impl App {
         glfw.window_hint(glfw::WindowHint::Resizable(true));
         glfw.window_hint(glfw::WindowHint::OpenGlDebugContext(true));
 
-        let (mut handle, events) = glfw
+        let (mut window, events) = glfw
             .create_window(width, height, "Simple Renderer", glfw::WindowMode::Windowed)
             .expect("Failed to create GLFW window.");
 
-        handle.make_current();
-        handle.set_key_polling(true);
-        handle.set_resizable(true);
+        window.make_current();
+        window.set_key_polling(true);
+        window.set_resizable(true);
+        window.set_all_polling(true);
 
         gl_loader::init_gl();
         gl::load_with(|symbol| gl_loader::get_proc_address(symbol) as *const _);
@@ -47,13 +51,17 @@ impl App {
         init_gl();
 
         //Need to flip images because of the OpenGL coordinate system
-        unsafe {
-            stb_image::stb_image::bindgen::stbi_set_flip_vertically_on_load(1);
-        }
+        unsafe { stb_image::stb_image::bindgen::stbi_set_flip_vertically_on_load(1) };
+
+        let mut imgui = imgui::Context::create();
+        let imgui_glfw = ui::ImguiGLFW::new(&mut imgui, &mut window);
+        imgui.io_mut().mouse_draw_cursor = false;
 
         App {
             glfw,
-            handle,
+            imgui,
+            imgui_glfw,
+            window,
             events,
             width,
             height,
@@ -68,94 +76,78 @@ impl Drop for App {
     }
 }
 
-pub fn main_loop(window: &mut app::App) {
-    let mut input_data: input::Data = input::Data {
-        keys: HashMap::new(),
-        mouse: input::Mouse {
-            pos: (0., 0.),
-            prev_pos: (0., 0.),
-        },
-    };
+pub fn main_loop(app: &mut app::App) {
+    let mut editor = ui::editor::Editor::new();
+    let mut input_data = input::Data::new();
+    let mut camera = camera::create_default_camera(app.width, app.height);
+    let mut model = helper::load_wall();
+    let mut transforms = vec![math::scale_uniform_mat4x4(100.) * math::x_rotation_mat4x4(3.14)];
 
-    let mut fullscreen_model = helper::create_full_screen_triangle_model();
-    let brdf_lut = ibl::create_brdf_lut();
-    let (mut box_model, specular_skybox, diffuse_skybox, env_map, skybox_transform) =
-        helper::load_skybox();
-    // let (mut device_model_full, transforms) = helper::load_pbr_sphere();
-    // let (mut device_model_full, transforms) = helper::load_sponza();
-    // let (mut device_model_full, transforms) = helper::load_bistro_exterior();
-    let (mut device_model_full, transforms) = helper::load_wall();
-    // let (mut device_model_full, transforms) = helper::load_cylinder();
-    // let (mut device_model_full, transforms) = helper::load_well();
-    let mut camera = camera::create_default_camera(window.width, window.height);
-
-    let (mvp_technique, lighting_technique, skybox_technique, tone_mapping) = {
-        let mvp = techniques::mvp::create(&camera, &transforms);
-        let lighting = techniques::lighting::create(diffuse_skybox, brdf_lut, env_map, &camera);
-        let skybox = techniques::skybox::create(specular_skybox, &camera, skybox_transform);
-        let tone_mapping = techniques::tone_mapping::create();
-
-        if let Err(msg) = tech::is_technique_valid(&mvp) {
-            log::log_error(msg);
-            panic!();
-        }
-        if let Err(msg) = tech::is_technique_valid(&lighting) {
-            log::log_error(msg);
-            panic!();
-        }
-        if let Err(msg) = tech::is_technique_valid(&skybox) {
-            log::log_error(msg);
-            panic!();
-        }
-        if let Err(msg) = tech::is_technique_valid(&tone_mapping) {
-            log::log_error(msg);
-            panic!();
-        }
-
-        (mvp, lighting, skybox, tone_mapping)
-    };
-
-    let mut techniques = tech::TechniqueContainer::new();
-    techniques.map.insert(tech::Techniques::MVP, mvp_technique);
-    techniques
-        .map
-        .insert(tech::Techniques::Lighting, lighting_technique);
-    techniques
-        .map
-        .insert(tech::Techniques::Skybox, skybox_technique);
-    techniques
-        .map
-        .insert(tech::Techniques::ToneMapping, tone_mapping);
-
-    let mut pipeline = pipeline::Pipeline::new(window);
-    match &mut pipeline {
-        Ok(ref mut pipeline) => {
-            techniques.bind_pipeline(&pipeline);
-            device_model_full.bind_pass(&pipeline.passes[0]);
-            device_model_full.bind_pass(&pipeline.passes[1]);
-            box_model.bind_pass(&pipeline.passes[2]);
-            fullscreen_model.bind_pass(&pipeline.passes[3]);
-            if let Err(msg) =
-                pipeline::is_render_pipeline_valid(&pipeline, &techniques, &device_model_full)
-            {
-                log::log_error(msg);
+    let mut techniques = {
+        let skybox_texture = ibl::create_cube_map_texture(&helper::load_hdri_texture());
+        let mut techniques = tech::TechniqueContainer::new();
+        techniques.map.insert(
+            tech::Techniques::MVP,
+            techniques::mvp::create(&camera, &transforms),
+        );
+        techniques.map.insert(
+            tech::Techniques::Lighting,
+            techniques::lighting::create(&camera, &skybox_texture),
+        );
+        techniques.map.insert(
+            tech::Techniques::Skybox,
+            techniques::skybox::create(&camera, skybox_texture, math::scale_uniform_mat4x4(500.)),
+        );
+        techniques.map.insert(
+            tech::Techniques::ToneMapping,
+            techniques::tone_mapping::create(),
+        );
+        for technique in techniques.map.values() {
+            if let Err(msg) = tech::is_technique_valid(&technique) {
+                panic!(msg);
             }
         }
-        Err(msg) => {
-            log::log_error(msg.clone());
-            panic!();
-        }
+        techniques
+    };
+
+    let mut pipeline = pipeline::Pipeline::new(app).unwrap();
+    techniques.bind_pipeline(&pipeline);
+    pipeline.bind_model(&mut model);
+
+    if let Err(msg) = pipeline::is_render_pipeline_valid(&pipeline, &techniques, &model) {
+        log::log_error(msg);
     }
 
-    while !window.handle.should_close() {
-        input::update_input(window, &mut input_data);
-        input::update_window_size(window);
-        input::update_cursor_mode(window, &mut input_data);
-        input::update_camera(&mut camera, window, &input_data);
+    while !app.window.should_close() {
+        {
+            let model_load_result = editor.load_file_window.receiver.try_recv();
+            if let Ok(host_model) = model_load_result {
+                pipeline.unbind_model(&mut model);
+                techniques.unbind_pipeline(&pipeline);
+
+                model = model::DeviceModel::new(&host_model);
+                transforms = vec![math::Mat4x4f::identity(); model.meshes.len()];
+                techniques.map.insert(
+                    tech::Techniques::MVP,
+                    techniques::mvp::create(&camera, &transforms),
+                );
+
+                techniques.bind_pipeline(&pipeline);
+                pipeline.bind_model(&mut model);
+            }
+        }
+
+        input::update_input(app, &mut input_data);
+        input::update_window_size(app);
+        input::update_cursor_mode(app, &mut input_data);
+        input::update_camera(&mut camera, app, &input_data);
+        input::hot_reload(&mut pipeline, &mut techniques, &mut model, &input_data);
+        input::resize(&mut pipeline, &mut techniques, &mut model, &app);
 
         techniques::mvp::update(
             techniques.map.get_mut(&tech::Techniques::MVP).unwrap(),
             &camera,
+            &transforms,
         );
         techniques::lighting::update(
             techniques.map.get_mut(&tech::Techniques::Lighting).unwrap(),
@@ -166,73 +158,68 @@ pub fn main_loop(window: &mut app::App) {
             &camera,
         );
 
-        if let Ok(ref mut pipeline) = &mut pipeline {
-            if let Some(input::Action::Press) = input_data.keys.get(&input::Key::F5) {
-                let pipeline_program_handles: Vec<u32> =
-                    pipeline.passes.iter().map(|x| x.program.handle).collect();
+        pipeline.draw(&app, &techniques, &model);
 
-                if let Err(msg) = pipeline::reload_render_pipeline(pipeline) {
-                    log::log_error(format!("Failed to hot reload pipeline:\n{}", msg));
-                } else {
-                    for pass_program_handle in pipeline_program_handles {
-                        pass::unbind_techniques_from_render_pass(
-                            &mut techniques,
-                            pass_program_handle,
-                        );
+        {
+            let children_outliner_items: Vec<ui::editor::OutlinerItem> = model
+                .meshes
+                .iter()
+                .map(|m| ui::editor::OutlinerItem {
+                    label: m.name.clone(),
+                    children: Vec::new(),
+                })
+                .collect();
+
+            let outliner_items = vec![ui::editor::OutlinerItem {
+                label: "Model".to_string(),
+                children: children_outliner_items.iter().map(|x| x).collect(),
+            }];
+
+            let mut inspector_items = {
+                let mut inspector_items = Vec::<ui::editor::InsepctorItem>::new();
+                inspector_items.push(ui::editor::InsepctorItem {
+                    label: "Transform".to_string(),
+                    access: ui::editor::PropertyAccess::ReadOnly,
+                    property: ui::editor::PropertyValue::Mat4x4f(&mut transforms[0]),
+                });
+                let material = &mut model.materials[model.meshes[0].material_index];
+
+                for property in material.properties_1f.iter_mut() {
+                    for (i, data) in property.value.data_location.data.iter_mut().enumerate() {
+                        inspector_items.push(ui::editor::InsepctorItem {
+                            label: format!("{0}[{1}]", property.name, i),
+                            access: ui::editor::PropertyAccess::ReadWrite,
+                            property: ui::editor::PropertyValue::Vec1f(data),
+                        });
                     }
-
-                    device_model_full.unbind_pass(pipeline.passes[0].program.handle);
-                    device_model_full.unbind_pass(pipeline.passes[1].program.handle);
-                    box_model.unbind_pass(pipeline.passes[2].program.handle);
-                    fullscreen_model.unbind_pass(pipeline.passes[3].program.handle);
-
-                    for pass in pipeline.passes.iter_mut() {
-                        pass::bind_techniques_to_render_pass(&mut techniques, pass);
-                    }
-
-                    device_model_full.bind_pass(&pipeline.passes[0]);
-                    device_model_full.bind_pass(&pipeline.passes[1]);
-                    box_model.bind_pass(&pipeline.passes[2]);
-                    fullscreen_model.bind_pass(&pipeline.passes[3]);
-
-                    if let Err(msg) = pipeline::is_render_pipeline_valid(
-                        pipeline,
-                        &techniques,
-                        &device_model_full,
-                    ) {
-                        log::log_error(msg);
-                    }
-                    log::log_info("Pipeline hot reloaded".to_string());
                 }
-            }
-
-            if window.resized {
-                pipeline::resize_render_pipeline(window, pipeline);
-                if let Err(msg) =
-                    pipeline::is_render_pipeline_valid(pipeline, &techniques, &device_model_full)
-                {
-                    log::log_error(msg);
+                for property in material.properties_3f.iter_mut() {
+                    for (i, data) in property.value.data_location.data.iter_mut().enumerate() {
+                        inspector_items.push(ui::editor::InsepctorItem {
+                            label: format!("{0}[{1}]", property.name, i),
+                            access: ui::editor::PropertyAccess::ReadWrite,
+                            property: ui::editor::PropertyValue::Vec3f(data),
+                        });
+                    }
                 }
-            }
 
-            pass::execute_render_pass(&pipeline.passes[0], &techniques, &device_model_full);
-            pass::execute_render_pass(&pipeline.passes[1], &techniques, &device_model_full);
-            pass::execute_render_pass(&pipeline.passes[2], &techniques, &box_model);
-            pass::execute_render_pass(&pipeline.passes[3], &techniques, &fullscreen_model);
+                inspector_items
+            };
 
-            pass::blit_framebuffer_to_backbuffer(&pipeline.passes.last().unwrap(), window);
+            let mut ui = app.imgui_glfw.frame(&mut app.window, &mut app.imgui);
+            editor.draw_ui(&mut ui, &outliner_items, &mut inspector_items);
+
+            let mut o = true;
+            ui.show_demo_window(&mut o);
+
+            app.imgui_glfw.draw(ui);
         }
 
-        window.handle.swap_buffers();
+        app.window.swap_buffers();
     }
 
-    if let Ok(ref mut pipeline) = pipeline {
-        device_model_full.unbind_pass(pipeline.passes[0].program.handle);
-        device_model_full.unbind_pass(pipeline.passes[1].program.handle);
-        box_model.unbind_pass(pipeline.passes[2].program.handle);
-        fullscreen_model.unbind_pass(pipeline.passes[3].program.handle);
-        techniques.unbind_pipeline(&pipeline);
-    }
+    pipeline.unbind_model(&mut model);
+    techniques.unbind_pipeline(&pipeline);
 }
 
 fn init_gl() {

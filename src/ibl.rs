@@ -1,29 +1,28 @@
+use crate::asset::model;
 use crate::core::{pass, tech};
 use crate::gl::{shader, tex};
 use crate::helpers::helper;
 use crate::math;
-use crate::model::model;
 use crate::techniques;
 use std::f32;
 use std::ffi::c_void;
 use std::ptr::null;
 use std::rc::Rc;
 
-pub fn create_specular_cube_map_texture(
-    host_texture: &tex::HostTexture,
-    box_model: &mut model::DeviceModel,
-) -> Rc<tex::DeviceTexture> {
+pub fn create_cube_map_texture(host_texture: &tex::HostTexture) -> Rc<tex::DeviceTexture> {
     let width: u32 = 2048;
     let height: u32 = 2048;
+    let mut box_model = helper::load_skybox();
 
-    let (mut techs, pass) = create_hdri_2_cube_map_pass(host_texture, box_model, width, height);
+    let (mut techs, pass) =
+        create_hdri_2_cube_map_pass(host_texture, &mut box_model, width, height);
 
     let (fbos, pass) = draw_cubemap(&mut techs, pass, &box_model);
 
     let desc = tex::Descriptor::new(tex::DescriptorType::SphericalHdri(&host_texture));
     let cubemap = create_cubemap(&desc, width, height, &fbos);
 
-    cleanup_cubemap_fbos(&mut techs, box_model, &pass);
+    cleanup_cubemap_fbos(&mut techs, &mut box_model, &pass);
 
     cubemap
 }
@@ -63,7 +62,7 @@ pub fn create_prefiltered_environment_map(
 
     let views = [
         math::y_rotation_mat4x4(-f32::consts::PI),
-        math::identity_mat4x4(),
+        math::Mat4x4f::identity(),
         math::x_rotation_mat4x4(f32::consts::PI / 2.)
             * math::y_rotation_mat4x4(f32::consts::PI / 2.),
         math::x_rotation_mat4x4(-f32::consts::PI / 2.)
@@ -96,7 +95,7 @@ pub fn create_prefiltered_environment_map(
                 roughness,
             );
 
-            pass::execute_render_pass(&pass, &techs, &box_model);
+            pass.execute(&techs, &box_model);
         }
     }
 
@@ -108,14 +107,13 @@ pub fn create_brdf_lut() -> Rc<tex::DeviceTexture> {
     let height: u32 = 128;
 
     let (mut techs, mut pass, mut model) = create_brdf_integration_map_pass(width, height);
-    pass::execute_render_pass(&pass, &techs, &model);
+    pass.execute(&techs, &model);
 
     let result = pass.fbo.attachments[0].texture.clone();
     pass.fbo.attachments.clear();
 
-    pass::unbind_techniques_from_render_pass(&mut techs, pass.program.handle);
+    techs.unbind_render_pass(pass.program.handle);
     model.unbind_pass(pass.program.handle);
-    pass::unbind_techniques_from_render_pass(&mut techs, pass.program.handle);
 
     result
 }
@@ -278,9 +276,8 @@ fn cleanup_cubemap_fbos(
     box_model: &mut model::DeviceModel,
     pass: &pass::Pass,
 ) {
-    pass::unbind_techniques_from_render_pass(techs, pass.program.handle);
+    techs.unbind_render_pass(pass.program.handle);
     box_model.unbind_pass(pass.program.handle);
-    pass::unbind_techniques_from_render_pass(techs, pass.program.handle);
 }
 
 fn draw_cubemap(
@@ -314,7 +311,7 @@ fn draw_cubemap(
         pass,
         &box_model,
     );
-    let (nx, pass) = draw_cubemap_face(techs, math::identity_mat4x4(), pass, &box_model);
+    let (nx, pass) = draw_cubemap_face(techs, math::Mat4x4f::identity(), pass, &box_model);
     let (px, pass) = draw_cubemap_face(
         techs,
         math::y_rotation_mat4x4(-f32::consts::PI),
@@ -342,7 +339,7 @@ fn draw_cubemap_face(
     box_model: &model::DeviceModel,
 ) -> (PassFbo, pass::Pass) {
     techniques::ibl::update(techs.map.get_mut(&tech::Techniques::IBL).unwrap(), view);
-    pass::execute_render_pass(&pass, &techs, &box_model);
+    pass.execute(&techs, &box_model);
     let fbo = pass.fbo;
     pass.fbo = pass::Framebuffer::new(create_attachments(pass.width, pass.height)).unwrap();
 
@@ -395,7 +392,7 @@ fn create_hdri_2_cube_map_pass(
 
     let pass = pass::Pass::new(pass_desc).expect("Failed to create HDRI render pass.");
 
-    pass::bind_techniques_to_render_pass(&mut techs, &pass);
+    techs.bind_render_pass(&pass);
     box_model.bind_pass(&pass);
     if let Err(msg) = pass::is_render_pass_valid(&pass, &techs, &box_model) {
         panic!(msg);
@@ -447,7 +444,7 @@ fn create_diffuse_cubemap_convolution_pass(
 
     let pass = pass::Pass::new(pass_desc).expect("Failed to create HDRI render pass.");
 
-    pass::bind_techniques_to_render_pass(&mut techs, &pass);
+    techs.bind_render_pass(&pass);
     box_model.bind_pass(&pass);
     if let Err(msg) = pass::is_render_pass_valid(&pass, &techs, &box_model) {
         panic!(msg);
@@ -494,7 +491,7 @@ fn create_brdf_integration_map_pass(
 
     let pass = pass::Pass::new(pass_desc).expect("Failed to create BRDF integration pass.");
     let mut fullscreen_model = helper::create_full_screen_triangle_model();
-    pass::bind_techniques_to_render_pass(&mut techs, &pass);
+    techs.bind_render_pass(&pass);
     fullscreen_model.bind_pass(&pass);
     if let Err(msg) = pass::is_render_pass_valid(&pass, &techs, &fullscreen_model) {
         panic!(msg);
@@ -544,7 +541,7 @@ fn create_prefiltered_environment_map_pass(
 
     let pass = pass::Pass::new(pass_desc).expect("Failed to create HDRI render pass.");
 
-    pass::bind_techniques_to_render_pass(&mut techs, &pass);
+    techs.bind_render_pass(&pass);
     box_model.bind_pass(&pass);
     if let Err(msg) = pass::is_render_pass_valid(&pass, &techs, &box_model) {
         panic!(msg);

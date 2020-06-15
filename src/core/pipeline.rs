@@ -233,18 +233,13 @@ impl Pipeline {
         device_model.unbind_pass(self.passes[1].program.handle);
     }
 
-    pub fn draw(
-        &self,
-        app: &app::App,
-        techniques: &tech::TechniqueContainer,
-        device_model: &model::DeviceModel,
-    ) {
+    pub fn draw(&self, techniques: &tech::TechniqueContainer, device_model: &model::DeviceModel) {
         self.passes[0].execute(&techniques, &device_model);
         self.passes[1].execute(&techniques, &device_model);
         self.passes[2].execute(&techniques, &self.skybox_model);
         self.passes[3].execute(&techniques, &self.fullsceen_model);
 
-        pass::blit_framebuffer_to_backbuffer(&self.passes.last().unwrap(), app);
+        pass::blit_framebuffer_to_backbuffer(&self.passes.last().unwrap());
     }
 }
 

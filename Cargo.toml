@@ -7,13 +7,18 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-gl_loader = "0.1.2"
-tobj = "0.1.11"
 gl = "0.14.0"
-colored = "1.9.2"
-stb_image = "0.2.2"
+gl_loader = "0.1.2"
 imgui = "0.4.0"
+imgui-opengl-renderer = "0.8.0"
 glfw = "0.37.0"
+
+tobj = "0.1.11"
+stb_image = "0.2.2"
+
+colored = "1.9.2"
 futures = "0.3.5"
 threadpool = "1.8.1"
-imgui-opengl-renderer = "0.8.0"
+
+# ECS
+uuid = { version = "0.8", features = ["serde", "v4"] }

@@ -1,6 +1,7 @@
 use crate::math;
 use std::f32;
 
+#[derive(Clone)]
 pub struct Camera {
     pub view: math::Mat4x4f,
     pub pos: math::Vec3f,

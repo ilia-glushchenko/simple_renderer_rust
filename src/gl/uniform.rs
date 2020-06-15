@@ -21,6 +21,7 @@ pub struct Uniform<T> {
     pub data_location: UniformDataLoction<T>,
 }
 
+#[derive(Clone)]
 pub struct Uniforms {
     pub vec1f: Vec<Uniform<math::Vec1f>>,
     pub vec1u: Vec<Uniform<math::Vec1u>>,
@@ -29,11 +30,13 @@ pub struct Uniforms {
     pub mat4x4f: Vec<Uniform<math::Mat4x4f>>,
 }
 
+#[derive(Clone)]
 pub struct PerModelUnifrom<T> {
     pub name: String,
     pub data_locations: Vec<UniformDataLoction<T>>,
 }
 
+#[derive(Clone)]
 pub struct PerModelUniforms {
     pub vec1f: Vec<PerModelUnifrom<math::Vec1f>>,
     pub vec1u: Vec<PerModelUnifrom<math::Vec1u>>,

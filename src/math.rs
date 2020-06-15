@@ -16,9 +16,17 @@ pub type Vec1u = Vec1<u32>;
 #[allow(dead_code)]
 pub type Vec1i = Vec1<i16>;
 
-impl<T> Vec1<T> {
+impl<T> Vec1<T>
+where
+    T: From<u16>,
+{
     pub fn new(x: T) -> Vec1<T> {
         Vec1 { x }
+    }
+
+    #[allow(dead_code)]
+    pub fn null() -> Vec1<T> {
+        Vec1::<T> { x: T::from(0) }
     }
 }
 
@@ -34,9 +42,20 @@ pub type Vec2u = Vec2<u32>;
 #[allow(dead_code)]
 pub type Vec2i = Vec2<i16>;
 
-impl<T> Vec2<T> {
+impl<T> Vec2<T>
+where
+    T: From<u16>,
+{
     pub fn new(x: T, y: T) -> Vec2<T> {
         Vec2 { x, y }
+    }
+
+    #[allow(dead_code)]
+    pub fn null() -> Vec2<T> {
+        Vec2::<T> {
+            x: T::from(0),
+            y: T::from(0),
+        }
     }
 }
 
@@ -53,9 +72,21 @@ pub type Vec3u = Vec3<u32>;
 #[allow(dead_code)]
 pub type Vec3i = Vec3<i16>;
 
-impl<T> Vec3<T> {
+impl<T> Vec3<T>
+where
+    T: From<u16>,
+{
     pub fn new(x: T, y: T, z: T) -> Vec3<T> {
         Vec3 { x, y, z }
+    }
+
+    #[allow(dead_code)]
+    pub fn null() -> Vec3<T> {
+        Vec3::<T> {
+            x: T::from(0),
+            y: T::from(0),
+            z: T::from(0),
+        }
     }
 }
 
@@ -73,9 +104,22 @@ pub type Vec4u = Vec4<u32>;
 #[allow(dead_code)]
 pub type Vec4i = Vec4<i16>;
 
-impl<T> Vec4<T> {
+impl<T> Vec4<T>
+where
+    T: From<u16>,
+{
     pub fn new(x: T, y: T, z: T, w: T) -> Vec4<T> {
         Vec4 { x, y, z, w }
+    }
+
+    #[allow(dead_code)]
+    pub fn null() -> Vec4<T> {
+        Vec4::<T> {
+            x: T::from(0),
+            y: T::from(0),
+            z: T::from(0),
+            w: T::from(0),
+        }
     }
 }
 
@@ -110,7 +154,7 @@ pub type Mat4x4i = Mat4x4<i16>;
 
 impl<T> Mat4x4<T>
 where
-    T: From<i16>,
+    T: From<u16>,
 {
     pub fn identity() -> Mat4x4<T> {
         Mat4x4::<T> {
@@ -124,7 +168,7 @@ where
     #[allow(dead_code)]
     pub fn null() -> Mat4x4<T>
     where
-        T: From<i16>,
+        T: From<u16>,
     {
         Mat4x4::<T> {
             r1: Vec4::<T>::new(T::from(0), T::from(0), T::from(0), T::from(0)),
@@ -420,50 +464,6 @@ where
 }
 
 #[allow(dead_code)]
-pub fn null_vec1<T>() -> Vec1<T>
-where
-    T: From<i16>,
-{
-    Vec1::<T> { x: T::from(0) }
-}
-
-#[allow(dead_code)]
-pub fn null_vec2<T>() -> Vec2<T>
-where
-    T: From<i16>,
-{
-    Vec2::<T> {
-        x: T::from(0),
-        y: T::from(0),
-    }
-}
-
-#[allow(dead_code)]
-pub fn null_vec3<T>() -> Vec3<T>
-where
-    T: From<i16>,
-{
-    Vec3::<T> {
-        x: T::from(0),
-        y: T::from(0),
-        z: T::from(0),
-    }
-}
-
-#[allow(dead_code)]
-pub fn null_vec4<T>() -> Vec4<T>
-where
-    T: From<i16>,
-{
-    Vec4::<T> {
-        x: T::from(0),
-        y: T::from(0),
-        z: T::from(0),
-        w: T::from(0),
-    }
-}
-
-#[allow(dead_code)]
 pub fn dot_vec1<T>(a: Vec1<T>, b: Vec1<T>) -> T
 where
     T: Mul<Output = T> + Copy,
@@ -732,7 +732,7 @@ where
 
 impl<T> Mul<Mat3x3<T>> for Mat3x3<T>
 where
-    T: Mul<Output = T> + Add<Output = T> + Copy,
+    T: Mul<Output = T> + Add<Output = T> + Copy + From<u16>,
 {
     type Output = Mat3x3<T>;
 
@@ -759,7 +759,7 @@ where
 
 impl<T> Mul<Mat4x4<T>> for Mat4x4<T>
 where
-    T: Mul<Output = T> + Add<Output = T> + Copy,
+    T: Mul<Output = T> + Add<Output = T> + Copy + From<u16>,
 {
     type Output = Mat4x4<T>;
 
@@ -843,7 +843,7 @@ where
 
 impl<T> From<Mat3x3<T>> for Mat4x4<T>
 where
-    T: From<i16>,
+    T: From<u16>,
 {
     fn from(src: Mat3x3<T>) -> Mat4x4<T> {
         Mat4x4::<T> {
@@ -858,7 +858,7 @@ where
 #[allow(dead_code)]
 pub fn null_mat3x3<T>() -> Mat3x3<T>
 where
-    T: From<i16>,
+    T: From<u16>,
 {
     Mat3x3::<T> {
         r1: Vec3::<T>::new(T::from(0), T::from(0), T::from(0)),
@@ -870,7 +870,7 @@ where
 #[allow(dead_code)]
 pub fn identity_mat3x3<T>() -> Mat3x3<T>
 where
-    T: From<i16>,
+    T: From<u16>,
 {
     Mat3x3::<T> {
         r1: Vec3::<T>::new(T::from(1), T::from(0), T::from(0)),

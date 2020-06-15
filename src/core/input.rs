@@ -8,11 +8,13 @@ use std::collections::HashMap;
 pub type Action = glfw::Action;
 pub type Key = glfw::Key;
 
+#[derive(Clone)]
 pub struct Mouse {
     pub pos: (f64, f64),
     pub prev_pos: (f64, f64),
 }
 
+#[derive(Clone)]
 pub struct Data {
     pub keys: HashMap<Key, Action>,
     pub mouse: Mouse,

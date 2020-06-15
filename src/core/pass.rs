@@ -1,6 +1,6 @@
 extern crate gl;
 use crate::asset::{material, model};
-use crate::core::{app, tech};
+use crate::core::tech;
 use crate::gl::{shader, tex, uniform};
 use crate::helpers::log;
 use crate::math;
@@ -542,13 +542,13 @@ pub fn is_render_pass_valid(
     Ok(())
 }
 
-pub fn blit_framebuffer_to_backbuffer(pass: &Pass, app: &app::App) {
+pub fn blit_framebuffer_to_backbuffer(pass: &Pass) {
     unsafe {
         gl::BindFramebuffer(gl::READ_FRAMEBUFFER, pass.fbo.handle);
         gl::ReadBuffer(gl::COLOR_ATTACHMENT0);
         gl::BindFramebuffer(gl::DRAW_FRAMEBUFFER, 0);
-        gl::Viewport(0, 0, app.width as i32, app.height as i32);
-        gl::Scissor(0, 0, app.width as i32, app.height as i32);
+        gl::Viewport(0, 0, pass.width as i32, pass.height as i32);
+        gl::Scissor(0, 0, pass.width as i32, pass.height as i32);
         gl::BlitFramebuffer(
             0,
             0,
@@ -556,8 +556,8 @@ pub fn blit_framebuffer_to_backbuffer(pass: &Pass, app: &app::App) {
             pass.height as i32,
             0,
             0,
-            app.width as i32,
-            app.height as i32,
+            pass.width as i32,
+            pass.height as i32,
             gl::COLOR_BUFFER_BIT,
             gl::LINEAR,
         );
